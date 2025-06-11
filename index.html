@@ -1,0 +1,1088 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Analisador de Extrato</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: Arial, sans-serif;
+            background: #f5f5f5;
+            padding: 20px;
+            color: #333;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+
+        h1 {
+            text-align: center;
+            color: #2c3e50;
+            margin-bottom: 30px;
+        }
+
+        .upload-section {
+            margin-bottom: 30px;
+        }
+
+        .file-input {
+            margin-bottom: 20px;
+        }
+
+        .file-input label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: bold;
+            color: #555;
+        }
+
+        .file-input input[type="file"] {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #ddd;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+
+        .file-status {
+            margin-top: 5px;
+            padding: 8px;
+            border-radius: 4px;
+            font-size: 14px;
+            display: none;
+        }
+
+        .success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .options {
+            margin: 20px 0;
+        }
+
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .checkbox-group input[type="checkbox"] {
+            width: 16px;
+            height: 16px;
+        }
+
+        .buttons {
+            text-align: center;
+            margin: 30px 0;
+        }
+
+        .btn {
+            padding: 12px 25px;
+            margin: 0 10px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: bold;
+        }
+
+        .btn-primary {
+            background: #007bff;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #0056b3;
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background: #545b62;
+        }
+
+        .btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            margin: 20px 0;
+        }
+
+        .loading p {
+            margin-top: 10px;
+            color: #666;
+        }
+
+        .results {
+            display: none;
+            margin-top: 30px;
+            border-top: 2px solid #eee;
+            padding-top: 30px;
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+
+        .stat-box {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+            text-align: center;
+            border: 1px solid #dee2e6;
+        }
+
+        .stat-value {
+            font-size: 20px;
+            font-weight: bold;
+            color: #007bff;
+        }
+
+        .stat-label {
+            font-size: 14px;
+            color: #666;
+            margin-top: 5px;
+        }
+
+        .category-item {
+            margin-bottom: 15px;
+            background: #f8f9fa;
+            border-radius: 5px;
+            border-left: 4px solid #007bff;
+        }
+
+        .category-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px;
+            cursor: pointer;
+        }
+
+        .category-header:hover {
+            background: #e9ecef;
+        }
+
+        .category-name {
+            font-weight: bold;
+            font-size: 16px;
+        }
+
+        .category-details {
+            font-size: 14px;
+            color: #666;
+            margin-top: 3px;
+        }
+
+        .category-value {
+            font-weight: bold;
+            color: #007bff;
+            font-size: 16px;
+        }
+
+        .expand-icon {
+            font-size: 12px;
+            color: #666;
+            margin-left: 10px;
+        }
+
+        .category-items {
+            display: none;
+            background: #fff;
+            border-top: 1px solid #dee2e6;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .category-items.show {
+            display: block;
+        }
+
+        .category-summary {
+            background: #e7f3ff;
+            padding: 12px 15px;
+            border-bottom: 1px solid #007bff;
+            font-weight: bold;
+            color: #0056b3;
+        }
+
+        .item-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 15px;
+            border-bottom: 1px solid #f1f3f4;
+            font-size: 14px;
+        }
+
+        .item-row:last-child {
+            border-bottom: none;
+        }
+
+        .item-row:hover {
+            background: #f8f9fa;
+        }
+
+        .item-description {
+            flex: 1;
+            margin-right: 15px;
+            color: #555;
+        }
+
+        .item-date {
+            font-size: 12px;
+            color: #888;
+            margin-right: 15px;
+            min-width: 80px;
+        }
+
+        .item-value {
+            font-weight: bold;
+            color: #007bff;
+            white-space: nowrap;
+            min-width: 80px;
+            text-align: right;
+        }
+
+        .category-total {
+            background: #f8f9fa;
+            padding: 12px 15px;
+            border-top: 2px solid #007bff;
+            font-weight: bold;
+            color: #007bff;
+            text-align: right;
+        }
+
+        .top-5 {
+            background: #e7f3ff;
+            padding: 20px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+
+        .top-5 h3 {
+            margin-bottom: 15px;
+            color: #007bff;
+        }
+
+        .top-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid #ccc;
+        }
+
+        .top-item:last-child {
+            border-bottom: none;
+        }
+
+        .error-message {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 15px 0;
+            border: 1px solid #f5c6cb;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📊 Analisador de Extrato</h1>
+
+        <div class="upload-section">
+            <div class="file-input">
+                <label for="csvFile">Arquivo do Extrato (CSV):</label>
+                <input type="file" id="csvFile" accept=".csv" onchange="handleFileSelect(event, 'csv')">
+                <div id="csvStatus" class="file-status"></div>
+            </div>
+
+            <div class="file-input">
+                <label for="excelFile">Arquivo de Categorias (Excel):</label>
+                <input type="file" id="excelFile" accept=".xlsx,.xls" onchange="handleFileSelect(event, 'excel')">
+                <div id="excelStatus" class="file-status"></div>
+            </div>
+
+            <div class="options">
+                <div class="checkbox-group">
+                    <input type="checkbox" id="includeCredits">
+                    <label for="includeCredits">Incluir créditos na análise</label>
+                </div>
+            </div>
+
+            <div class="buttons">
+                <button class="btn btn-primary" onclick="processFiles()" id="processBtn" disabled>
+                    Analisar
+                </button>
+                <button class="btn btn-secondary" onclick="downloadResults()" id="downloadBtn" disabled>
+                    Download CSV
+                </button>
+                <button class="btn btn-secondary" onclick="downloadExcel()" id="downloadExcelBtn" disabled>
+                    Download Excel
+                </button>
+                <button class="btn btn-secondary" onclick="resetForm()">
+                    Limpar
+                </button>
+            </div>
+
+            <div class="loading" id="loading">
+                <p>⏳ Processando...</p>
+            </div>
+        </div>
+
+        <div class="results" id="results">
+            <h2>📈 Resultados</h2>
+            
+            <div class="stats">
+                <div class="stat-box">
+                    <div class="stat-value" id="totalTransactions">0</div>
+                    <div class="stat-label">Transações</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-value" id="totalDebits">0</div>
+                    <div class="stat-label">Débitos</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-value" id="totalCredits">0</div>
+                    <div class="stat-label">Créditos</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-value" id="totalAmount">R$ 0</div>
+                    <div class="stat-label">Total</div>
+                </div>
+            </div>
+
+            <div class="top-5">
+                <h3>🏆 Top 5 Categorias</h3>
+                <div id="topCategories"></div>
+            </div>
+
+            <h3>📋 Categorias Detalhadas</h3>
+            <p style="color: #666; margin-bottom: 15px;">
+                <span id="processingMethod">🐍 Processado com Python</span> • 
+                Clique em cada categoria para ver os itens individuais
+            </p>
+            <div id="categoryList"></div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+    
+    <script>
+        var csvData = null;
+        var categoriesData = null;
+        var processedResults = null;
+
+        function handleFileSelect(event, type) {
+            var file = event.target.files[0];
+            if (!file) return;
+
+            var statusDiv = document.getElementById(type + 'Status');
+            statusDiv.textContent = '✅ ' + file.name + ' carregado';
+            statusDiv.className = 'file-status success';
+            statusDiv.style.display = 'block';
+
+            if (type === 'csv') {
+                loadCSVFile(file);
+            } else {
+                loadExcelFile(file);
+            }
+        }
+
+        function loadCSVFile(file) {
+            Papa.parse(file, {
+                header: true,
+                dynamicTyping: false, // Não converter automaticamente
+                skipEmptyLines: true,
+                complete: function(results) {
+                    csvData = [];
+                    for (var i = 0; i < results.data.length; i++) {
+                        var row = results.data[i];
+                        if (row && typeof row === 'object' && 
+                            (row.Descrição || row.Valor || row.Data || row.Tipo)) {
+                            
+                            // Converter valor para número mantendo precisão
+                            row.ValorNumerico = parseFloat(row.Valor) || 0;
+                            csvData.push(row);
+                        }
+                    }
+                    console.log('CSV carregado: ' + csvData.length + ' linhas válidas');
+                    console.log('Exemplo de linha:', csvData[1]);
+                    checkFilesLoaded();
+                },
+                error: function(error) {
+                    showError('Erro ao carregar CSV: ' + error.message);
+                }
+            });
+        }
+
+        function loadExcelFile(file) {
+            var reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    var data = new Uint8Array(e.target.result);
+                    var workbook = XLSX.read(data, {type: 'array'});
+                    var firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+                    var jsonData = XLSX.utils.sheet_to_json(firstSheet, {header: 1});
+                    
+                    categoriesData = processCategoriesData(jsonData);
+                    console.log('Categorias carregadas: ' + Object.keys(categoriesData).length);
+                    checkFilesLoaded();
+                } catch (error) {
+                    showError('Erro ao carregar Excel: ' + error.message);
+                }
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        function processCategoriesData(jsonData) {
+            var categories = {};
+            var currentCategory = null;
+            
+            // Pular cabeçalho
+            for (var i = 1; i < jsonData.length; i++) {
+                var row = jsonData[i];
+                if (row && row.length > 0) {
+                    if (row[0] && row[0].toString().trim()) {
+                        currentCategory = row[0].toString().trim();
+                    }
+                    if (row[1] && row[1].toString().trim() && currentCategory) {
+                        var name = row[1].toString().trim();
+                        categories[name.toUpperCase()] = currentCategory;
+                    }
+                }
+            }
+            
+            return categories;
+        }
+
+        function checkFilesLoaded() {
+            if (csvData && categoriesData) {
+                document.getElementById('processBtn').disabled = false;
+            }
+        }
+
+        function categorizeItem(description, categories) {
+            if (!description) return "Outros";
+            
+            var descriptionUpper = description.toString().toUpperCase();
+            var bestMatch = null;
+            var bestLength = 0;
+            
+            for (var keyword in categories) {
+                if (categories.hasOwnProperty(keyword)) {
+                    if (descriptionUpper.indexOf(keyword) !== -1) {
+                        if (keyword.length > bestLength) {
+                            bestMatch = categories[keyword];
+                            bestLength = keyword.length;
+                        }
+                    }
+                }
+            }
+            
+            return bestMatch || "Outros";
+        }
+
+        function processFiles() {
+            if (!csvData && !categoriesData) {
+                // Se não temos dados carregados, usar arquivos diretamente
+                var csvFile = document.getElementById('csvFile').files[0];
+                var excelFile = document.getElementById('excelFile').files[0];
+                
+                if (!csvFile || !excelFile) {
+                    showError('Por favor, carregue ambos os arquivos.');
+                    return;
+                }
+                
+                processWithPythonAPI(csvFile, excelFile);
+            } else {
+                // Fallback para processamento JavaScript (caso API não funcione)
+                processWithJavaScript();
+            }
+        }
+
+        function processWithPythonAPI(csvFile, excelFile) {
+            document.getElementById('loading').style.display = 'block';
+            
+            var formData = new FormData();
+            formData.append('csv_file', csvFile);
+            formData.append('excel_file', excelFile);
+            formData.append('incluir_creditos', document.getElementById('includeCredits').checked);
+            
+            fetch('/api/process_extrato', {
+                method: 'POST',
+                body: formData
+            })
+            .then(function(response) {
+                if (!response.ok) {
+                    throw new Error('Erro na API: ' + response.status);
+                }
+                return response.json();
+            })
+            .then(function(data) {
+                if (data.success) {
+                    console.log('Processamento Python concluído!');
+                    displayPythonResults(data);
+                } else {
+                    throw new Error(data.error || 'Erro desconhecido');
+                }
+            })
+            .catch(function(error) {
+                console.error('Erro na API Python:', error);
+                showError('Erro no processamento: ' + error.message + '. Tentando processamento local...');
+                
+                // Fallback para JavaScript se API falhar
+                setTimeout(function() {
+                    processWithJavaScript();
+                }, 1000);
+            })
+            .finally(function() {
+                document.getElementById('loading').style.display = 'none';
+            });
+        }
+
+        function displayPythonResults(data) {
+            // Converter dados da API Python para formato compatível
+            processedResults = {
+                results: data.categorias.map(function(cat) {
+                    return {
+                        category: cat.categoria,
+                        total: cat.total,
+                        count: cat.quantidade,
+                        percentage: cat.percentual,
+                        items: cat.itens.map(function(item) {
+                            return {
+                                description: item.descricao,
+                                value: item.valor,
+                                date: item.data,
+                                tipo: item.tipo,
+                                document: item.documento
+                            };
+                        })
+                    };
+                }),
+                totalAmount: data.estatisticas.valor_total,
+                totalTransactions: data.estatisticas.total_transacoes,
+                totalDebits: data.estatisticas.total_debitos,
+                totalCredits: data.estatisticas.total_creditos,
+                excelFile: data.excel_file
+            };
+            
+            // Indicar que foi processado com Python
+            document.getElementById('processingMethod').innerHTML = '🐍 Processado com Python (Preciso!)';
+            document.getElementById('processingMethod').style.color = '#28a745';
+            
+            displayResults();
+        }
+
+        function processWithJavaScript() {
+            console.log('Usando processamento JavaScript como fallback...');
+            
+            // Indicar que está usando JavaScript
+            document.getElementById('processingMethod').innerHTML = '⚠️ Processado com JavaScript (Fallback)';
+            document.getElementById('processingMethod').style.color = '#ffc107';
+            
+            if (!csvData || !categoriesData) {
+                showError('Carregue ambos os arquivos primeiro.');
+                return;
+            }
+
+            document.getElementById('loading').style.display = 'block';
+            
+            setTimeout(function() {
+                try {
+                    var includeCredits = document.getElementById('includeCredits').checked;
+                    var filteredData = [];
+                    
+                    for (var i = 0; i < csvData.length; i++) {
+                        var row = csvData[i];
+                        if (includeCredits || row.Tipo === 'D') {
+                            filteredData.push(row);
+                        }
+                    }
+
+                    var categorized = {};
+                    var totalAmount = 0;
+                    
+                    for (var j = 0; j < filteredData.length; j++) {
+                        var row = filteredData[j];
+                        var category = categorizeItem(row.Descrição, categoriesData);
+                        var value = row.ValorNumerico || parseFloat(row.Valor) || 0;
+                        
+                        if (j < 3) {
+                            console.log('Processando linha ' + j + ':');
+                            console.log('  Descrição: ' + row.Descrição);
+                            console.log('  Valor original: ' + row.Valor);
+                            console.log('  Valor numérico: ' + value);
+                            console.log('  Data: ' + row.Data);
+                            console.log('  Categoria: ' + category);
+                        }
+                        
+                        if (!categorized[category]) {
+                            categorized[category] = { 
+                                total: 0, 
+                                count: 0, 
+                                items: [] 
+                            };
+                        }
+                        
+                        categorized[category].total += value;
+                        categorized[category].count += 1;
+                        categorized[category].items.push({
+                            description: row.Descrição || 'Sem descrição',
+                            value: value,
+                            date: row.Data || '',
+                            document: row.Documento || '',
+                            tipo: row.Tipo || ''
+                        });
+                        
+                        totalAmount += value;
+                    }
+
+                    var results = [];
+                    for (var category in categorized) {
+                        if (categorized.hasOwnProperty(category)) {
+                            var data = categorized[category];
+                            results.push({
+                                category: category,
+                                total: data.total,
+                                count: data.count,
+                                percentage: totalAmount > 0 ? (data.total / totalAmount * 100) : 0,
+                                items: data.items.sort(function(a, b) { return b.value - a.value; })
+                            });
+                        }
+                    }
+                    
+                    results.sort(function(a, b) { return b.total - a.total; });
+
+                    processedResults = {
+                        results: results,
+                        totalAmount: totalAmount,
+                        totalTransactions: csvData.length,
+                        totalDebits: 0,
+                        totalCredits: 0
+                    };
+                    
+                    for (var k = 0; k < csvData.length; k++) {
+                        if (csvData[k].Tipo === 'D') processedResults.totalDebits++;
+                        if (csvData[k].Tipo === 'C') processedResults.totalCredits++;
+                    }
+
+                    displayResults();
+                    
+                } catch (error) {
+                    showError('Erro ao processar: ' + error.message);
+                } finally {
+                    document.getElementById('loading').style.display = 'none';
+                }
+            }, 100);
+        }
+
+        function displayResults() {
+            var data = processedResults;
+
+            document.getElementById('totalTransactions').textContent = data.totalTransactions;
+            document.getElementById('totalDebits').textContent = data.totalDebits;
+            document.getElementById('totalCredits').textContent = data.totalCredits;
+            document.getElementById('totalAmount').textContent = formatCurrency(data.totalAmount);
+
+            // Top 5
+            var topDiv = document.getElementById('topCategories');
+            topDiv.innerHTML = '';
+            
+            for (var i = 0; i < Math.min(5, data.results.length); i++) {
+                var item = data.results[i];
+                var div = document.createElement('div');
+                div.className = 'top-item';
+                div.innerHTML = '<span>' + (i + 1) + '. ' + item.category + '</span><span>' + formatCurrency(item.total) + '</span>';
+                topDiv.appendChild(div);
+            }
+
+            // Lista completa
+            var listDiv = document.getElementById('categoryList');
+            listDiv.innerHTML = '';
+            
+            for (var j = 0; j < data.results.length; j++) {
+                var item = data.results[j];
+                
+                var div = document.createElement('div');
+                div.className = 'category-item';
+                
+                var headerDiv = document.createElement('div');
+                headerDiv.className = 'category-header';
+                headerDiv.onclick = createToggleFunction(j);
+                headerDiv.innerHTML = '<div><div class="category-name">' + item.category + '</div><div class="category-details">' + item.count + ' itens • ' + item.percentage.toFixed(1) + '% do total</div></div><div style="display: flex; align-items: center;"><div class="category-value">' + formatCurrency(item.total) + '</div><span class="expand-icon" id="icon-' + j + '">▶</span></div>';
+                
+                var itemsDiv = document.createElement('div');
+                itemsDiv.className = 'category-items';
+                itemsDiv.id = 'items-' + j;
+                
+                var summaryDiv = document.createElement('div');
+                summaryDiv.className = 'category-summary';
+                summaryDiv.innerHTML = '📋 Itens da categoria "' + item.category + '" (' + item.count + ' itens)';
+                itemsDiv.appendChild(summaryDiv);
+                
+                if (item.items && item.items.length > 0) {
+                    for (var k = 0; k < item.items.length; k++) {
+                        var categoryItem = item.items[k];
+                        var itemRow = document.createElement('div');
+                        itemRow.className = 'item-row';
+                        
+                        var formattedDate = 'Sem data';
+                        if (categoryItem.date) {
+                            try {
+                                var dateString = categoryItem.date.toString().trim();
+                                
+                                // Para formato YYYY-MM-DD, converter manualmente para evitar problemas de fuso
+                                if (dateString.match(/^\d{4}-\d{2}-\d{2}$/)) {
+                                    var parts = dateString.split('-');
+                                    var year = parts[0];
+                                    var month = parts[1];
+                                    var day = parts[2];
+                                    formattedDate = day + '/' + month + '/' + year;
+                                } else if (dateString.match(/^\d{2}\/\d{2}\/\d{4}$/)) {
+                                    // Já está no formato brasileiro
+                                    formattedDate = dateString;
+                                } else {
+                                    // Tentar outros formatos como fallback
+                                    var dateObj = new Date(categoryItem.date + 'T12:00:00'); // Adicionar horário para evitar fuso
+                                    if (!isNaN(dateObj.getTime())) {
+                                        formattedDate = dateObj.toLocaleDateString('pt-BR');
+                                    }
+                                }
+                            } catch (e) {
+                                console.log('Erro ao converter data: ' + categoryItem.date);
+                                formattedDate = categoryItem.date.toString();
+                            }
+                        }
+                        
+                        var description = categoryItem.description || 'Sem descrição';
+                        var shortDescription = description.length > 80 ? description.substring(0, 80) + '...' : description;
+                        
+                        // Adicionar indicador de tipo (D = Débito, C = Crédito)
+                        var tipoIndicator = '';
+                        if (categoryItem.tipo === 'C') {
+                            tipoIndicator = ' [CRÉDITO]';
+                        } else if (categoryItem.tipo === 'D') {
+                            tipoIndicator = ' [DÉBITO]';
+                        }
+                        
+                        itemRow.innerHTML = '<div class="item-description" title="' + description + '">' + (k + 1) + '. ' + shortDescription + tipoIndicator + '</div><div class="item-date">' + formattedDate + '</div><div class="item-value">' + formatCurrency(categoryItem.value) + '</div>';
+                        
+                        itemsDiv.appendChild(itemRow);
+                    }
+                }
+                
+                var totalDiv = document.createElement('div');
+                totalDiv.className = 'category-total';
+                totalDiv.innerHTML = 'TOTAL DA CATEGORIA: ' + formatCurrency(item.total);
+                itemsDiv.appendChild(totalDiv);
+                
+                div.appendChild(headerDiv);
+                div.appendChild(itemsDiv);
+                listDiv.appendChild(div);
+            }
+
+            document.getElementById('results').style.display = 'block';
+            document.getElementById('downloadBtn').disabled = false;
+            document.getElementById('downloadExcelBtn').disabled = false;
+        }
+
+        function createToggleFunction(index) {
+            return function() {
+                toggleCategoryItems(index);
+            };
+        }
+
+        function toggleCategoryItems(index) {
+            var itemsDiv = document.getElementById('items-' + index);
+            var iconDiv = document.getElementById('icon-' + index);
+            
+            if (itemsDiv.classList.contains('show')) {
+                itemsDiv.classList.remove('show');
+                iconDiv.textContent = '▶';
+            } else {
+                itemsDiv.classList.add('show');
+                iconDiv.textContent = '▼';
+            }
+        }
+
+        function formatCurrency(value) {
+            // Usar a formatação brasileira correta do JavaScript
+            return new Intl.NumberFormat('pt-BR', {
+                style: 'currency',
+                currency: 'BRL'
+            }).format(value);
+        }
+
+        function showError(message) {
+            var errorDiv = document.createElement('div');
+            errorDiv.className = 'error-message';
+            errorDiv.textContent = message;
+            
+            document.querySelector('.upload-section').appendChild(errorDiv);
+            
+            setTimeout(function() {
+                if (errorDiv.parentNode) {
+                    errorDiv.remove();
+                }
+            }, 5000);
+        }
+
+        function downloadResults() {
+            if (!processedResults) return;
+
+            var csvContent = 'Categoria,Valor Total,Quantidade,Percentual\n';
+            for (var i = 0; i < processedResults.results.length; i++) {
+                var item = processedResults.results[i];
+                csvContent += item.category + ',' + item.total.toFixed(2) + ',' + item.count + ',' + item.percentage.toFixed(1) + '%\n';
+            }
+
+            var blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            var link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = 'resumo_categorias.csv';
+            link.click();
+        }
+
+        function generateJavaScriptExcel() {
+            if (!processedResults) return;
+
+            // Se temos arquivo Excel da API Python, usar ele
+            if (processedResults.excelFile) {
+                try {
+                    var today = new Date();
+                    var dateStr = today.getDate().toString().padStart(2, '0') + '-' + 
+                                 (today.getMonth() + 1).toString().padStart(2, '0') + '-' + 
+                                 today.getFullYear();
+                    var filename = 'Analise_Extrato_' + dateStr + '.xlsx';
+                    
+                    // Converter base64 para blob
+                    var binaryString = atob(processedResults.excelFile);
+                    var bytes = new Uint8Array(binaryString.length);
+                    for (var i = 0; i < binaryString.length; i++) {
+                        bytes[i] = binaryString.charCodeAt(i);
+                    }
+                    
+                    var blob = new Blob([bytes], { 
+                        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
+                    });
+                    
+                    var link = document.createElement('a');
+                    link.href = URL.createObjectURL(blob);
+                    link.download = filename;
+                    link.click();
+                    
+                    console.log('Excel do Python baixado: ' + filename);
+                    return;
+                } catch (error) {
+                    console.error('Erro ao baixar Excel do Python:', error);
+                    showError('Erro ao baixar Excel gerado pelo Python. Gerando versão JavaScript...');
+                }
+            }
+
+            // Fallback: gerar Excel com JavaScript
+            generateJavaScriptExcel();
+        }
+
+        function generateJavaScriptExcel() {
+            if (!processedResults) return;
+
+            try {
+                // Criar um novo workbook
+                var wb = XLSX.utils.book_new();
+                
+                // 1. Aba de Resumo
+                var resumoData = [
+                    ['Categoria', 'Valor Total', 'Quantidade de Itens', 'Percentual'],
+                    ['', '', '', ''],
+                    ['RESUMO GERAL', '', '', ''],
+                    ['Total de Transações', processedResults.totalTransactions, '', ''],
+                    ['Total de Débitos', processedResults.totalDebits, '', ''],
+                    ['Total de Créditos', processedResults.totalCredits, '', ''],
+                    ['Valor Total Analisado', formatCurrency(processedResults.totalAmount), '', ''],
+                    ['', '', '', ''],
+                    ['CATEGORIAS', '', '', '']
+                ];
+                
+                // Adicionar dados das categorias
+                for (var i = 0; i < processedResults.results.length; i++) {
+                    var item = processedResults.results[i];
+                    resumoData.push([
+                        item.category,
+                        formatCurrency(item.total),
+                        item.count,
+                        item.percentage.toFixed(1) + '%'
+                    ]);
+                }
+                
+                var wsResumo = XLSX.utils.aoa_to_sheet(resumoData);
+                XLSX.utils.book_append_sheet(wb, wsResumo, 'Resumo');
+                
+                // 2. Criar uma aba para cada categoria
+                for (var j = 0; j < processedResults.results.length; j++) {
+                    var category = processedResults.results[j];
+                    
+                    // Dados da categoria
+                    var categoryData = [
+                        ['CATEGORIA: ' + category.category],
+                        ['Total: ' + formatCurrency(category.total)],
+                        ['Quantidade: ' + category.count + ' itens'],
+                        ['Percentual: ' + category.percentage.toFixed(1) + '%'],
+                        [''],
+                        ['#', 'Data', 'Descrição', 'Valor', 'Tipo'],
+                        []
+                    ];
+                    
+                    // Adicionar itens da categoria
+                    if (category.items && category.items.length > 0) {
+                        for (var k = 0; k < category.items.length; k++) {
+                            var item = category.items[k];
+                            
+                            // Formatar data
+                            var dataFormatada = 'Sem data';
+                            if (item.date) {
+                                var dateString = item.date.toString().trim();
+                                if (dateString.match(/^\d{4}-\d{2}-\d{2}$/)) {
+                                    var parts = dateString.split('-');
+                                    dataFormatada = parts[2] + '/' + parts[1] + '/' + parts[0];
+                                } else {
+                                    dataFormatada = item.date;
+                                }
+                            }
+                            
+                            categoryData.push([
+                                k + 1,
+                                dataFormatada,
+                                item.description || 'Sem descrição',
+                                formatCurrency(item.value),
+                                item.tipo === 'C' ? 'CRÉDITO' : 'DÉBITO'
+                            ]);
+                        }
+                    }
+                    
+                    // Adicionar total no final
+                    categoryData.push([]);
+                    categoryData.push(['', '', 'TOTAL DA CATEGORIA:', formatCurrency(category.total), '']);
+                    
+                    var ws = XLSX.utils.aoa_to_sheet(categoryData);
+                    
+                    // Limitar nome da aba a 31 caracteres (limite do Excel)
+                    var sheetName = category.category.substring(0, 31);
+                    // Remover caracteres inválidos para nome de aba
+                    sheetName = sheetName.replace(/[\\\/\?\*\[\]]/g, '');
+                    
+                    XLSX.utils.book_append_sheet(wb, ws, sheetName);
+                }
+                
+                // 3. Aba com todos os itens
+                var todosItensData = [
+                    ['#', 'Data', 'Categoria', 'Descrição', 'Valor', 'Tipo'],
+                    []
+                ];
+                
+                var numeroItem = 1;
+                for (var m = 0; m < processedResults.results.length; m++) {
+                    var cat = processedResults.results[m];
+                    if (cat.items && cat.items.length > 0) {
+                        for (var n = 0; n < cat.items.length; n++) {
+                            var item = cat.items[n];
+                            
+                            var dataFormatada = 'Sem data';
+                            if (item.date) {
+                                var dateString = item.date.toString().trim();
+                                if (dateString.match(/^\d{4}-\d{2}-\d{2}$/)) {
+                                    var parts = dateString.split('-');
+                                    dataFormatada = parts[2] + '/' + parts[1] + '/' + parts[0];
+                                } else {
+                                    dataFormatada = item.date;
+                                }
+                            }
+                            
+                            todosItensData.push([
+                                numeroItem,
+                                dataFormatada,
+                                cat.category,
+                                item.description || 'Sem descrição',
+                                formatCurrency(item.value),
+                                item.tipo === 'C' ? 'CRÉDITO' : 'DÉBITO'
+                            ]);
+                            numeroItem++;
+                        }
+                    }
+                }
+                
+                var wsTodos = XLSX.utils.aoa_to_sheet(todosItensData);
+                XLSX.utils.book_append_sheet(wb, wsTodos, 'Todos os Itens');
+                
+                // Gerar e baixar arquivo
+                var today = new Date();
+                var dateStr = today.getDate().toString().padStart(2, '0') + '-' + 
+                             (today.getMonth() + 1).toString().padStart(2, '0') + '-' + 
+                             today.getFullYear();
+                var filename = 'Analise_Extrato_' + dateStr + '.xlsx';
+                
+                XLSX.writeFile(wb, filename);
+                
+                console.log('Arquivo Excel gerado: ' + filename);
+                
+            } catch (error) {
+                console.error('Erro ao gerar Excel:', error);
+                showError('Erro ao gerar arquivo Excel: ' + error.message);
+            }
+        }
+
+        function resetForm() {
+            csvData = null;
+            categoriesData = null;
+            processedResults = null;
+            
+            document.getElementById('csvFile').value = '';
+            document.getElementById('excelFile').value = '';
+            document.getElementById('csvStatus').style.display = 'none';
+            document.getElementById('excelStatus').style.display = 'none';
+            document.getElementById('includeCredits').checked = false;
+            document.getElementById('processBtn').disabled = true;
+            document.getElementById('downloadBtn').disabled = true;
+            document.getElementById('downloadExcelBtn').disabled = true;
+            document.getElementById('results').style.display = 'none';
+            
+            var errorMessages = document.querySelectorAll('.error-message');
+            for (var i = 0; i < errorMessages.length; i++) {
+                errorMessages[i].remove();
+            }
+        }
+    </script>
+</body>
+</html>
