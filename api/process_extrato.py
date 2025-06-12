@@ -4,11 +4,9 @@ import numpy as np
 from datetime import datetime
 import io
 import base64
-from http.server import BaseHTTPRequestHandler
 import openpyxl
-from openpyxl.styles import Font, PatternFill, Alignment
 import re
-import urllib.parse
+from urllib.parse import parse_qs
 
 def categorizar_item(descricao, categorias_dict):
     """
@@ -198,55 +196,119 @@ def gerar_excel_completo(resultados, dados_processados):
     except Exception as e:
         raise Exception(f"Erro ao gerar Excel: {str(e)}")
 
-class handler(BaseHTTPRequestHandler):
-    def do_POST(self):
-        try:
-            # Verificar se é a rota correta
-            if not self.path.startswith('/api/process_extrato'):
-                self.send_response(404)
-                self.end_headers()
-                return
+def parse_multipart_data(body, boundary):
+    """
+    Parse de dados multipart/form-data
+    """
+    parts = body.split(boundary.encode())
+    files = {}
+    form_data = {}
+    
+    for part in parts:
+        if b'Content-Disposition' in part:
+            # Extrair nome do campo
+            disposition_line = part.split(b'\r\n')[1].decode()
+            if 'name="' in disposition_line:
+                name_start = disposition_line.find('name="') + 6
+                name_end = disposition_line.find('"', name_start)
+                field_name = disposition_line[name_start:name_end]
+                
+                # Encontrar início dos dados
+                data_start = part.find(b'\r\n\r\n')
+                if data_start != -1:
+                    data = part[data_start + 4:].rstrip(b'\r\n--')
+                    
+                    if 'filename=' in disposition_line:
+                        # É um arquivo
+                        files[field_name] = data
+                    else:
+                        # É um campo de texto
+                        form_data[field_name] = data.decode()
+    
+    return files, form_data
+
+# Handler principal para Vercel
+def handler(request):
+    """
+    Handler principal para requisições do Vercel
+    """
+    try:
+        method = request.get('method', 'GET')
+        path = request.get('path', '/')
+        headers = request.get('headers', {})
+        body = request.get('body', b'')
+        
+        # Se body é string, converter para bytes
+        if isinstance(body, str):
+            if body.startswith('data:'):
+                # Body em base64
+                import base64
+                body = base64.b64decode(body.split(',')[1])
+            else:
+                body = body.encode()
+        
+        # Health check
+        if method == 'GET' and path.endswith('/health'):
+            return {
+                'statusCode': 200,
+                'headers': {
+                    'Content-Type': 'application/json',
+                    'Access-Control-Allow-Origin': '*'
+                },
+                'body': json.dumps({
+                    'status': 'OK', 
+                    'message': 'API Python funcionando!',
+                    'timestamp': datetime.now().isoformat()
+                })
+            }
+        
+        # OPTIONS para CORS
+        if method == 'OPTIONS':
+            return {
+                'statusCode': 200,
+                'headers': {
+                    'Access-Control-Allow-Origin': '*',
+                    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+                    'Access-Control-Allow-Headers': 'Content-Type'
+                },
+                'body': ''
+            }
+        
+        # POST para processamento
+        if method == 'POST' and 'process_extrato' in path:
+            content_type = headers.get('content-type', headers.get('Content-Type', ''))
             
-            # Ler dados do POST
-            content_length = int(self.headers['Content-Length'])
-            post_data = self.rfile.read(content_length)
-            
-            # Parse multipart form data
-            content_type = self.headers['Content-Type']
             if 'multipart/form-data' not in content_type:
-                raise Exception("Content-Type deve ser multipart/form-data")
+                return {
+                    'statusCode': 400,
+                    'headers': {
+                        'Content-Type': 'application/json',
+                        'Access-Control-Allow-Origin': '*'
+                    },
+                    'body': json.dumps({'error': 'Content-Type deve ser multipart/form-data'})
+                }
             
             # Extrair boundary
-            boundary = content_type.split('boundary=')[1].encode()
+            boundary = '--' + content_type.split('boundary=')[1]
             
-            # Parse dos arquivos
-            parts = post_data.split(b'--' + boundary)
+            # Parse dos dados
+            files, form_data = parse_multipart_data(body, boundary)
             
-            csv_data = None
-            excel_data = None
-            incluir_creditos = False
-            
-            for part in parts:
-                if b'name="csv_file"' in part:
-                    # Extrair dados do CSV
-                    csv_start = part.find(b'\r\n\r\n') + 4
-                    csv_data = part[csv_start:].rstrip(b'\r\n')
-                elif b'name="excel_file"' in part:
-                    # Extrair dados do Excel
-                    excel_start = part.find(b'\r\n\r\n') + 4
-                    excel_data = part[excel_start:].rstrip(b'\r\n')
-                elif b'name="incluir_creditos"' in part:
-                    # Extrair valor do checkbox
-                    value_start = part.find(b'\r\n\r\n') + 4
-                    value = part[value_start:].rstrip(b'\r\n').decode()
-                    incluir_creditos = value.lower() == 'true'
-            
-            if not csv_data or not excel_data:
-                raise Exception("Arquivos CSV e Excel são obrigatórios")
+            if 'csv_file' not in files or 'excel_file' not in files:
+                return {
+                    'statusCode': 400,
+                    'headers': {
+                        'Content-Type': 'application/json',
+                        'Access-Control-Allow-Origin': '*'
+                    },
+                    'body': json.dumps({'error': 'Arquivos CSV e Excel são obrigatórios'})
+                }
             
             # Processar arquivos
-            categorias_dict = processar_categorias_excel(excel_data)
-            df_extrato = processar_extrato_csv(csv_data, incluir_creditos)
+            incluir_creditos = form_data.get('incluir_creditos', 'false').lower() == 'true'
+            
+            categorias_dict = processar_categorias_excel(files['excel_file'])
+            df_extrato = processar_extrato_csv(files['csv_file'], incluir_creditos)
             
             # Categorizar itens
             df_extrato['Categoria'] = df_extrato['Descrição'].apply(
@@ -309,41 +371,31 @@ class handler(BaseHTTPRequestHandler):
                 'excel_file': excel_b64
             }
             
-            # Enviar resposta
-            self.send_response(200)
-            self.send_header('Content-Type', 'application/json')
-            self.send_header('Access-Control-Allow-Origin', '*')
-            self.end_headers()
-            
-            response_json = json.dumps(resposta, default=str)
-            self.wfile.write(response_json.encode())
-            
-        except Exception as e:
-            # Enviar erro
-            self.send_response(500)
-            self.send_header('Content-Type', 'application/json')
-            self.send_header('Access-Control-Allow-Origin', '*')
-            self.end_headers()
-            
-            error_response = json.dumps({'error': str(e)})
-            self.wfile.write(error_response.encode())
-    
-    def do_GET(self):
-        if self.path == '/api/health':
-            self.send_response(200)
-            self.send_header('Content-Type', 'application/json')
-            self.send_header('Access-Control-Allow-Origin', '*')
-            self.end_headers()
-            
-            response = json.dumps({'status': 'OK', 'message': 'API funcionando'})
-            self.wfile.write(response.encode())
-        else:
-            self.send_response(404)
-            self.end_headers()
-    
-    def do_OPTIONS(self):
-        self.send_response(200)
-        self.send_header('Access-Control-Allow-Origin', '*')
-        self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
-        self.send_header('Access-Control-Allow-Headers', 'Content-Type')
-        self.end_headers()
+            return {
+                'statusCode': 200,
+                'headers': {
+                    'Content-Type': 'application/json',
+                    'Access-Control-Allow-Origin': '*'
+                },
+                'body': json.dumps(resposta, default=str)
+            }
+        
+        # 404 para outras rotas
+        return {
+            'statusCode': 404,
+            'headers': {
+                'Content-Type': 'application/json',
+                'Access-Control-Allow-Origin': '*'
+            },
+            'body': json.dumps({'error': 'Endpoint não encontrado'})
+        }
+        
+    except Exception as e:
+        return {
+            'statusCode': 500,
+            'headers': {
+                'Content-Type': 'application/json',
+                'Access-Control-Allow-Origin': '*'
+            },
+            'body': json.dumps({'error': f'Erro na API: {str(e)}'})
+        }
