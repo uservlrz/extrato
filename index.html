@@ -3,534 +3,224 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>📊 Analisador de Extrato</title>
+    <title>Analisador de Extrato</title>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            color: #333;
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background: #f5f5f5;
         }
 
         .container {
-            max-width: 900px;
+            max-width: 800px;
             margin: 0 auto;
-            padding: 20px;
-        }
-
-        .header {
-            text-align: center;
-            color: white;
-            margin-bottom: 30px;
-        }
-
-        .header h1 {
-            font-size: 2.5rem;
-            margin-bottom: 10px;
-            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
-        }
-
-        .header p {
-            font-size: 1.1rem;
-            opacity: 0.9;
-        }
-
-        .upload-section {
             background: white;
-            border-radius: 20px;
-            padding: 30px;
-            margin-bottom: 30px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            padding: 20px;
+            border: 1px solid #ccc;
         }
 
-        .upload-area {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 20px;
-            margin-bottom: 20px;
-        }
-
-        .file-upload {
-            border: 3px dashed #667eea;
-            border-radius: 15px;
-            padding: 30px;
+        h1 {
             text-align: center;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            background: #f8f9ff;
-            position: relative;
+            color: #333;
         }
 
-        .file-upload:hover {
-            border-color: #764ba2;
-            background: #f0f2ff;
-            transform: translateY(-2px);
-        }
-
-        .file-upload.dragover {
-            border-color: #4caf50;
-            background: #e8f5e8;
-        }
-
-        .file-upload input {
-            display: none;
-        }
-
-        .file-upload-icon {
-            font-size: 3rem;
-            margin-bottom: 15px;
-        }
-
-        .file-upload h3 {
-            color: #667eea;
-            margin-bottom: 10px;
-            font-size: 1.2rem;
-        }
-
-        .file-upload p {
-            color: #666;
-            font-size: 0.9rem;
-        }
-
-        .file-status {
-            margin-top: 15px;
-            padding: 10px;
-            border-radius: 8px;
-            font-weight: 500;
-            display: none;
-        }
-
-        .file-success {
-            background: #e8f5e8;
-            color: #2e7d32;
-            border: 1px solid #4caf50;
-        }
-
-        .file-error {
-            background: #ffebee;
-            color: #c62828;
-            border: 1px solid #f44336;
-        }
-
-        .options {
+        .upload-box {
+            border: 2px solid #666;
+            padding: 20px;
             margin: 20px 0;
+            text-align: center;
+            background: #fafafa;
         }
 
-        .checkbox-group {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            padding: 15px;
-            background: #f8f9ff;
-            border-radius: 10px;
+        input[type="file"] {
+            margin: 10px;
+            padding: 5px;
         }
 
-        .checkbox-group input[type="checkbox"] {
-            width: 18px;
-            height: 18px;
-            accent-color: #667eea;
-        }
-
-        .checkbox-group label {
-            font-weight: 500;
-            color: #555;
-        }
-
-        .controls {
-            display: flex;
-            gap: 15px;
-            justify-content: center;
-            flex-wrap: wrap;
-        }
-
-        .btn {
-            padding: 12px 30px;
+        button {
+            background: #007bff;
+            color: white;
             border: none;
-            border-radius: 25px;
-            font-size: 1rem;
-            font-weight: 600;
+            padding: 10px 20px;
+            margin: 5px;
             cursor: pointer;
-            transition: all 0.3s ease;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            position: relative;
-            overflow: hidden;
         }
 
-        .btn-primary {
-            background: linear-gradient(45deg, #667eea, #764ba2);
-            color: white;
-            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
-        }
-
-        .btn-primary:hover:not(:disabled) {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
-        }
-
-        .btn-secondary {
-            background: #f1f3f4;
-            color: #5f6368;
-            border: 2px solid #dadce0;
-        }
-
-        .btn-secondary:hover:not(:disabled) {
-            background: #e8eaed;
-            border-color: #5f6368;
-        }
-
-        .btn:disabled {
-            opacity: 0.6;
+        button:disabled {
+            background: #ccc;
             cursor: not-allowed;
-            transform: none !important;
         }
 
-        .loading {
-            display: none;
-            text-align: center;
-            margin: 20px 0;
+        button:hover:not(:disabled) {
+            background: #0056b3;
         }
 
-        .spinner {
-            border: 4px solid #f3f3f3;
-            border-top: 4px solid #667eea;
-            border-radius: 50%;
-            width: 40px;
-            height: 40px;
-            animation: spin 1s linear infinite;
-            margin: 0 auto 15px;
-        }
-
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-
-        .processing-status {
-            padding: 15px;
-            border-radius: 10px;
-            margin: 15px 0;
-            font-weight: 600;
-            text-align: center;
-            display: none;
-        }
-
-        .processing-python {
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-left: 4px solid #007bff;
             background: #e7f3ff;
-            color: #0056b3;
-            border: 2px solid #007bff;
         }
 
-        .processing-fallback {
-            background: #fff3cd;
-            color: #856404;
-            border: 2px solid #ffc107;
+        .error {
+            border-left-color: #dc3545;
+            background: #f8d7da;
+            color: #721c24;
         }
 
-        .results-section {
+        .success {
+            border-left-color: #28a745;
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .results {
             display: none;
-            background: white;
-            border-radius: 20px;
-            padding: 30px;
-            margin-bottom: 30px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
-        }
-
-        .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 20px;
-            margin-bottom: 30px;
-        }
-
-        .stat-card {
-            background: linear-gradient(135deg, #667eea, #764ba2);
-            color: white;
-            padding: 20px;
-            border-radius: 15px;
-            text-align: center;
-            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.3);
-        }
-
-        .stat-value {
-            font-size: 2rem;
-            font-weight: bold;
-            margin-bottom: 5px;
-        }
-
-        .stat-label {
-            font-size: 0.9rem;
-            opacity: 0.9;
-        }
-
-        .top-categories {
-            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
-            color: white;
-            padding: 20px;
-            border-radius: 15px;
-            margin-bottom: 20px;
-        }
-
-        .top-categories h3 {
-            margin-bottom: 15px;
-            text-align: center;
-        }
-
-        .top-category {
-            display: flex;
-            justify-content: space-between;
-            padding: 10px 0;
-            border-bottom: 1px solid rgba(255,255,255,0.2);
-        }
-
-        .top-category:last-child {
-            border-bottom: none;
-        }
-
-        .category-results {
             margin-top: 20px;
         }
 
-        .category-item {
-            margin-bottom: 15px;
-            background: #f8f9fa;
-            border-radius: 10px;
-            border-left: 5px solid #667eea;
-            overflow: hidden;
+        .stats {
+            display: flex;
+            gap: 20px;
+            margin: 20px 0;
+            flex-wrap: wrap;
+        }
+
+        .stat {
+            flex: 1;
+            min-width: 150px;
+            padding: 15px;
+            background: #e9ecef;
+            text-align: center;
+            border: 1px solid #ccc;
+        }
+
+        .stat-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #007bff;
+        }
+
+        .category {
+            border: 1px solid #ddd;
+            margin: 10px 0;
+            background: white;
         }
 
         .category-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
             padding: 15px;
+            background: #f8f9fa;
             cursor: pointer;
-            transition: background-color 0.2s;
+            border-bottom: 1px solid #ddd;
         }
 
         .category-header:hover {
             background: #e9ecef;
         }
 
-        .category-name {
-            font-weight: bold;
-            font-size: 1.1rem;
-        }
-
-        .category-details {
-            font-size: 0.9rem;
-            color: #666;
-            margin-top: 3px;
-        }
-
-        .category-value {
-            font-weight: bold;
-            color: #667eea;
-            font-size: 1.1rem;
-        }
-
-        .expand-icon {
-            font-size: 14px;
-            color: #666;
-            margin-left: 10px;
-            transition: transform 0.2s;
-        }
-
-        .expand-icon.expanded {
-            transform: rotate(90deg);
-        }
-
         .category-items {
             display: none;
-            background: #fff;
-            border-top: 1px solid #dee2e6;
-            max-height: 400px;
-            overflow-y: auto;
+            padding: 0;
         }
 
         .category-items.show {
             display: block;
         }
 
-        .category-summary {
-            background: #e7f3ff;
-            padding: 12px 15px;
-            border-bottom: 1px solid #007bff;
-            font-weight: bold;
-            color: #0056b3;
-        }
-
-        .item-row {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
+        .item {
             padding: 10px 15px;
-            border-bottom: 1px solid #f1f3f4;
+            border-bottom: 1px solid #eee;
             font-size: 14px;
         }
 
-        .item-row:last-child {
+        .item:last-child {
             border-bottom: none;
         }
 
-        .item-row:hover {
-            background: #f8f9fa;
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 20px;
         }
 
-        .item-description {
-            flex: 1;
-            margin-right: 15px;
-            color: #555;
+        .checkbox-container {
+            margin: 15px 0;
         }
 
-        .item-date {
-            font-size: 12px;
-            color: #888;
-            margin-right: 15px;
-            min-width: 80px;
+        .checkbox-container input {
+            margin-right: 8px;
         }
 
-        .item-value {
-            font-weight: bold;
-            color: #007bff;
-            white-space: nowrap;
-            min-width: 80px;
-            text-align: right;
-        }
-
-        .category-total {
-            background: #f8f9fa;
-            padding: 12px 15px;
-            border-top: 2px solid #007bff;
-            font-weight: bold;
-            color: #007bff;
-            text-align: right;
-        }
-
-        .error-message {
-            background: #ffebee;
-            color: #c62828;
-            padding: 15px;
-            border-radius: 10px;
-            margin: 20px 0;
-            border-left: 5px solid #f44336;
-        }
-
-        @media (max-width: 768px) {
-            .upload-area {
-                grid-template-columns: 1fr;
-            }
-            
-            .header h1 {
-                font-size: 2rem;
-            }
-            
-            .container {
-                padding: 15px;
-            }
-            
-            .controls {
+        @media (max-width: 600px) {
+            .stats {
                 flex-direction: column;
-                align-items: center;
             }
             
-            .stats-grid {
-                grid-template-columns: 1fr 1fr;
+            .stat {
+                min-width: auto;
             }
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <div class="header">
-            <h1>📊 Analisador de Extrato</h1>
-            <p>Categorize e analise seus gastos com precisão usando Python</p>
-        </div>
-
-        <div class="upload-section">
-            <div class="upload-area">
-                <div class="file-upload" onclick="document.getElementById('csvFile').click()">
-                    <div class="file-upload-icon">📊</div>
-                    <h3>Extrato CSV</h3>
-                    <p>Arraste seu arquivo CSV ou clique para selecionar</p>
-                    <input type="file" id="csvFile" accept=".csv" onchange="handleFileSelect(event, 'csv')">
-                    <div id="csvStatus" class="file-status"></div>
-                </div>
-
-                <div class="file-upload" onclick="document.getElementById('excelFile').click()">
-                    <div class="file-upload-icon">📋</div>
-                    <h3>Categorias Excel</h3>
-                    <p>Arraste seu arquivo Excel ou clique para selecionar</p>
-                    <input type="file" id="excelFile" accept=".xlsx,.xls" onchange="handleFileSelect(event, 'excel')">
-                    <div id="excelStatus" class="file-status"></div>
-                </div>
+        <h1>Analisador de Extrato</h1>
+        
+        <div class="upload-box">
+            <h3>Carregar Arquivos</h3>
+            <div>
+                <label>Extrato CSV:</label>
+                <input type="file" id="csvFile" accept=".csv" onchange="handleFileSelect(event, 'csv')">
+                <div id="csvStatus"></div>
             </div>
-
-            <div class="options">
-                <div class="checkbox-group">
-                    <input type="checkbox" id="includeCredits">
-                    <label for="includeCredits">Incluir créditos (entradas) na análise</label>
-                </div>
-            </div>
-
-            <div class="controls">
-                <button class="btn btn-primary" onclick="processFiles()" id="processBtn" disabled>
-                    🔍 Analisar Extrato
-                </button>
-                <button class="btn btn-secondary" onclick="downloadResults()" id="downloadBtn" disabled>
-                    📥 Download Excel
-                </button>
-                <button class="btn btn-secondary" onclick="resetForm()">
-                    🔄 Limpar Tudo
-                </button>
-            </div>
-
-            <div class="processing-status" id="processingStatus"></div>
-
-            <div class="loading" id="loading">
-                <div class="spinner"></div>
-                <p>🐍 Processando com Python...</p>
+            <div>
+                <label>Categorias Excel:</label>
+                <input type="file" id="excelFile" accept=".xlsx,.xls" onchange="handleFileSelect(event, 'excel')">
+                <div id="excelStatus"></div>
             </div>
         </div>
 
-        <div class="results-section" id="results">
-            <h2>📈 Resultados da Análise</h2>
+        <div class="checkbox-container">
+            <input type="checkbox" id="includeCredits">
+            <label for="includeCredits">Incluir créditos (entradas) na análise</label>
+        </div>
+
+        <div style="text-align: center;">
+            <button onclick="processFiles()" id="processBtn" disabled>Analisar</button>
+            <button onclick="downloadResults()" id="downloadBtn" disabled>Baixar Excel</button>
+            <button onclick="resetForm()">Limpar</button>
+        </div>
+
+        <div id="processingStatus"></div>
+
+        <div class="loading" id="loading">
+            <p>Processando...</p>
+        </div>
+
+        <div class="results" id="results">
+            <h2>Resultados</h2>
             
-            <div class="stats-grid">
-                <div class="stat-card">
+            <div class="stats">
+                <div class="stat">
                     <div class="stat-value" id="totalTransactions">0</div>
-                    <div class="stat-label">Total de Transações</div>
+                    <div>Transações</div>
                 </div>
-                <div class="stat-card">
+                <div class="stat">
                     <div class="stat-value" id="totalDebits">0</div>
-                    <div class="stat-label">Débitos (Gastos)</div>
+                    <div>Débitos</div>
                 </div>
-                <div class="stat-card">
+                <div class="stat">
                     <div class="stat-value" id="totalCredits">0</div>
-                    <div class="stat-label">Créditos (Entradas)</div>
+                    <div>Créditos</div>
                 </div>
-                <div class="stat-card">
+                <div class="stat">
                     <div class="stat-value" id="totalAmount">R$ 0,00</div>
-                    <div class="stat-label">Valor Total</div>
+                    <div>Total</div>
                 </div>
             </div>
 
-            <div class="top-categories">
-                <h3>🏆 Top 5 Categorias</h3>
-                <div id="topCategories"></div>
-            </div>
-
-            <div class="category-results">
-                <h3>📊 Detalhamento por Categoria</h3>
-                <p style="color: #666; margin-bottom: 15px;">Clique em cada categoria para ver os itens individuais</p>
-                <div id="categoryList"></div>
-            </div>
+            <h3>Categorias</h3>
+            <div id="categoryList"></div>
         </div>
     </div>
 
@@ -539,81 +229,20 @@
         let excelFile = null;
         let processedResults = null;
 
-        // Configurar drag and drop
-        document.addEventListener('DOMContentLoaded', function() {
-            setupDragAndDrop();
-        });
-
-        function setupDragAndDrop() {
-            const fileUploads = document.querySelectorAll('.file-upload');
-            
-            fileUploads.forEach(upload => {
-                upload.addEventListener('dragover', (e) => {
-                    e.preventDefault();
-                    upload.classList.add('dragover');
-                });
-                
-                upload.addEventListener('dragleave', () => {
-                    upload.classList.remove('dragover');
-                });
-                
-                upload.addEventListener('drop', (e) => {
-                    e.preventDefault();
-                    upload.classList.remove('dragover');
-                    
-                    const files = e.dataTransfer.files;
-                    if (files.length > 0) {
-                        const fileInput = upload.querySelector('input[type="file"]');
-                        const fileType = fileInput.id === 'csvFile' ? 'csv' : 'excel';
-                        handleFile(files[0], fileType);
-                    }
-                });
-            });
-        }
-
         function handleFileSelect(event, type) {
             const file = event.target.files[0];
-            if (file) {
-                handleFile(file, type);
-            }
-        }
-
-        function handleFile(file, type) {
             const statusDiv = document.getElementById(type + 'Status');
             
-            // Validar tipo de arquivo
-            const validExtensions = type === 'csv' ? ['.csv'] : ['.xlsx', '.xls'];
-            const fileExtension = '.' + file.name.split('.').pop().toLowerCase();
-            
-            if (!validExtensions.includes(fileExtension)) {
-                showFileStatus(statusDiv, `❌ Formato inválido. Use ${validExtensions.join(' ou ')}`, 'error');
-                return;
+            if (file) {
+                if (type === 'csv') {
+                    csvFile = file;
+                } else {
+                    excelFile = file;
+                }
+                
+                statusDiv.innerHTML = `<div class="status success">✓ ${file.name}</div>`;
+                checkFilesLoaded();
             }
-
-            showFileStatus(statusDiv, `✅ ${file.name} carregado (${formatFileSize(file.size)})`, 'success');
-
-            // Armazenar arquivo
-            if (type === 'csv') {
-                csvFile = file;
-            } else {
-                excelFile = file;
-            }
-
-            checkFilesLoaded();
-        }
-
-        function showFileStatus(statusDiv, message, type) {
-            statusDiv.textContent = message;
-            statusDiv.className = `file-status file-${type}`;
-            statusDiv.style.display = 'block';
-        }
-
-        function formatFileSize(bytes) {
-            if (bytes === 0) return '0 Bytes';
-            const k = 1024;
-            const sizes = ['Bytes', 'KB', 'MB'];
-            const i = Math.floor(Math.log(bytes) / Math.log(k));
-            return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
         }
 
         function checkFilesLoaded() {
@@ -625,12 +254,12 @@
 
         function processFiles() {
             if (!csvFile || !excelFile) {
-                showError('Por favor, carregue ambos os arquivos primeiro.');
+                showError('Carregue ambos os arquivos primeiro.');
                 return;
             }
 
             showLoading(true);
-            updateProcessingStatus('🐍 Processando com Python...', 'python');
+            updateProcessingStatus('Processando...', 'status');
 
             const formData = new FormData();
             formData.append('csv_file', csvFile);
@@ -643,23 +272,20 @@
             })
             .then(response => {
                 if (!response.ok) {
-                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    throw new Error(`Erro ${response.status}`);
                 }
                 return response.json();
             })
             .then(data => {
                 if (data.success) {
-                    console.log('✅ Processamento Python concluído!');
-                    updateProcessingStatus('🐍 Processado com Python - Precisão Total!', 'python');
+                    updateProcessingStatus('Processado com sucesso!', 'success');
                     displayResults(data);
                 } else {
                     throw new Error(data.error || 'Erro desconhecido');
                 }
             })
             .catch(error => {
-                console.error('❌ Erro na API Python:', error);
-                updateProcessingStatus('⚠️ Erro no Python - Dados podem estar incorretos', 'fallback');
-                showError(`Erro no processamento Python: ${error.message}`);
+                updateProcessingStatus(`Erro: ${error.message}`, 'error');
             })
             .finally(() => {
                 showLoading(false);
@@ -668,13 +294,10 @@
 
         function updateProcessingStatus(message, type) {
             const statusDiv = document.getElementById('processingStatus');
-            statusDiv.textContent = message;
-            statusDiv.className = `processing-status processing-${type}`;
-            statusDiv.style.display = 'block';
+            statusDiv.innerHTML = `<div class="status ${type}">${message}</div>`;
         }
 
         function displayResults(data) {
-            // Converter dados para formato padrão
             processedResults = {
                 results: data.categorias.map(cat => ({
                     category: cat.categoria,
@@ -685,8 +308,7 @@
                         description: item.descricao,
                         value: item.valor,
                         date: item.data,
-                        tipo: item.tipo,
-                        document: item.documento
+                        tipo: item.tipo
                     }))
                 })),
                 totalAmount: data.estatisticas.valor_total,
@@ -696,61 +318,33 @@
                 excelFile: data.excel_file
             };
 
-            // Atualizar estatísticas
             document.getElementById('totalTransactions').textContent = processedResults.totalTransactions;
             document.getElementById('totalDebits').textContent = processedResults.totalDebits;
             document.getElementById('totalCredits').textContent = processedResults.totalCredits;
             document.getElementById('totalAmount').textContent = formatCurrency(processedResults.totalAmount);
 
-            // Top 5 categorias
-            const topDiv = document.getElementById('topCategories');
-            topDiv.innerHTML = '';
-            
-            processedResults.results.slice(0, 5).forEach((item, index) => {
-                const div = document.createElement('div');
-                div.className = 'top-category';
-                div.innerHTML = `
-                    <span>${index + 1}. ${item.category}</span>
-                    <span>${formatCurrency(item.total)} (${item.percentage.toFixed(1)}%)</span>
-                `;
-                topDiv.appendChild(div);
-            });
-
-            // Lista detalhada
             const listDiv = document.getElementById('categoryList');
             listDiv.innerHTML = '';
             
             processedResults.results.forEach((item, index) => {
-                const div = document.createElement('div');
-                div.className = 'category-item';
+                const categoryDiv = document.createElement('div');
+                categoryDiv.className = 'category';
                 
                 const headerDiv = document.createElement('div');
                 headerDiv.className = 'category-header';
                 headerDiv.onclick = () => toggleCategoryItems(index);
                 headerDiv.innerHTML = `
-                    <div>
-                        <div class="category-name">${item.category}</div>
-                        <div class="category-details">${item.count} itens • ${item.percentage.toFixed(1)}% do total</div>
-                    </div>
-                    <div style="display: flex; align-items: center;">
-                        <div class="category-value">${formatCurrency(item.total)}</div>
-                        <span class="expand-icon" id="icon-${index}">▶</span>
-                    </div>
+                    <strong>${item.category}</strong> - ${formatCurrency(item.total)} (${item.count} itens)
                 `;
                 
                 const itemsDiv = document.createElement('div');
                 itemsDiv.className = 'category-items';
                 itemsDiv.id = `items-${index}`;
                 
-                const summaryDiv = document.createElement('div');
-                summaryDiv.className = 'category-summary';
-                summaryDiv.innerHTML = `📋 Itens da categoria "${item.category}" (${item.count} itens)`;
-                itemsDiv.appendChild(summaryDiv);
-                
                 if (item.items && item.items.length > 0) {
                     item.items.forEach((categoryItem, itemIndex) => {
-                        const itemRow = document.createElement('div');
-                        itemRow.className = 'item-row';
+                        const itemDiv = document.createElement('div');
+                        itemDiv.className = 'item';
                         
                         let formattedDate = 'Sem data';
                         if (categoryItem.date) {
@@ -763,53 +357,28 @@
                         }
                         
                         const description = categoryItem.description || 'Sem descrição';
-                        const shortDescription = description.length > 80 ? 
-                            description.substring(0, 80) + '...' : description;
+                        const tipo = categoryItem.tipo === 'C' ? ' (Crédito)' : ' (Débito)';
                         
-                        const tipoIndicator = categoryItem.tipo === 'C' ? ' [CRÉDITO]' : ' [DÉBITO]';
-                        
-                        itemRow.innerHTML = `
-                            <div class="item-description" title="${description}">
-                                ${itemIndex + 1}. ${shortDescription}${tipoIndicator}
-                            </div>
-                            <div class="item-date">${formattedDate}</div>
-                            <div class="item-value">${formatCurrency(categoryItem.value)}</div>
+                        itemDiv.innerHTML = `
+                            ${description}${tipo} - ${formatCurrency(categoryItem.value)} - ${formattedDate}
                         `;
                         
-                        itemsDiv.appendChild(itemRow);
+                        itemsDiv.appendChild(itemDiv);
                     });
                 }
                 
-                const totalDiv = document.createElement('div');
-                totalDiv.className = 'category-total';
-                totalDiv.innerHTML = `TOTAL DA CATEGORIA: ${formatCurrency(item.total)}`;
-                itemsDiv.appendChild(totalDiv);
-                
-                div.appendChild(headerDiv);
-                div.appendChild(itemsDiv);
-                listDiv.appendChild(div);
+                categoryDiv.appendChild(headerDiv);
+                categoryDiv.appendChild(itemsDiv);
+                listDiv.appendChild(categoryDiv);
             });
 
             document.getElementById('results').style.display = 'block';
             document.getElementById('downloadBtn').disabled = false;
-            
-            // Rolar suavemente para os resultados
-            document.getElementById('results').scrollIntoView({ behavior: 'smooth' });
         }
 
         function toggleCategoryItems(index) {
             const itemsDiv = document.getElementById(`items-${index}`);
-            const iconDiv = document.getElementById(`icon-${index}`);
-            
-            if (itemsDiv.classList.contains('show')) {
-                itemsDiv.classList.remove('show');
-                iconDiv.classList.remove('expanded');
-                iconDiv.textContent = '▶';
-            } else {
-                itemsDiv.classList.add('show');
-                iconDiv.classList.add('expanded');
-                iconDiv.textContent = '▼';
-            }
+            itemsDiv.classList.toggle('show');
         }
 
         function formatCurrency(value) {
@@ -824,53 +393,41 @@
         }
 
         function showError(message) {
-            const errorDiv = document.createElement('div');
-            errorDiv.className = 'error-message';
-            errorDiv.innerHTML = `<strong>❌ Erro:</strong> ${message}`;
-            
-            const uploadSection = document.querySelector('.upload-section');
-            uploadSection.appendChild(errorDiv);
-            
-            setTimeout(() => {
-                errorDiv.remove();
-            }, 8000);
+            updateProcessingStatus(message, 'error');
         }
 
         function downloadResults() {
-            if (!processedResults) return;
-
-            if (processedResults.excelFile) {
-                try {
-                    const today = new Date();
-                    const dateStr = today.getDate().toString().padStart(2, '0') + '-' + 
-                                 (today.getMonth() + 1).toString().padStart(2, '0') + '-' + 
-                                 today.getFullYear();
-                    const filename = `Analise_Extrato_${dateStr}.xlsx`;
-                    
-                    // Converter base64 para blob
-                    const binaryString = atob(processedResults.excelFile);
-                    const bytes = new Uint8Array(binaryString.length);
-                    for (let i = 0; i < binaryString.length; i++) {
-                        bytes[i] = binaryString.charCodeAt(i);
-                    }
-                    
-                    const blob = new Blob([bytes], { 
-                        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
-                    });
-                    
-                    const link = document.createElement('a');
-                    link.href = URL.createObjectURL(blob);
-                    link.download = filename;
-                    link.click();
-                    
-                    updateProcessingStatus('📥 Excel baixado com sucesso!', 'python');
-                    
-                } catch (error) {
-                    console.error('Erro ao baixar Excel:', error);
-                    showError('Erro ao baixar Excel. Tente novamente.');
-                }
-            } else {
+            if (!processedResults || !processedResults.excelFile) {
                 showError('Arquivo Excel não disponível.');
+                return;
+            }
+
+            try {
+                const today = new Date();
+                const dateStr = today.getDate().toString().padStart(2, '0') + '-' + 
+                             (today.getMonth() + 1).toString().padStart(2, '0') + '-' + 
+                             today.getFullYear();
+                const filename = `Analise_Extrato_${dateStr}.xlsx`;
+                
+                const binaryString = atob(processedResults.excelFile);
+                const bytes = new Uint8Array(binaryString.length);
+                for (let i = 0; i < binaryString.length; i++) {
+                    bytes[i] = binaryString.charCodeAt(i);
+                }
+                
+                const blob = new Blob([bytes], { 
+                    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
+                });
+                
+                const link = document.createElement('a');
+                link.href = URL.createObjectURL(blob);
+                link.download = filename;
+                link.click();
+                
+                updateProcessingStatus('Excel baixado!', 'success');
+                
+            } catch (error) {
+                showError('Erro ao baixar Excel.');
             }
         }
 
@@ -881,15 +438,13 @@
             
             document.getElementById('csvFile').value = '';
             document.getElementById('excelFile').value = '';
-            document.getElementById('csvStatus').style.display = 'none';
-            document.getElementById('excelStatus').style.display = 'none';
+            document.getElementById('csvStatus').innerHTML = '';
+            document.getElementById('excelStatus').innerHTML = '';
             document.getElementById('includeCredits').checked = false;
             document.getElementById('processBtn').disabled = true;
             document.getElementById('downloadBtn').disabled = true;
             document.getElementById('results').style.display = 'none';
-            document.getElementById('processingStatus').style.display = 'none';
-            
-            document.querySelectorAll('.error-message').forEach(el => el.remove());
+            document.getElementById('processingStatus').innerHTML = '';
         }
     </script>
 </body>
