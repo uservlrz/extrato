@@ -3,9 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Analisador de Extrato - Dual Mode</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js"></script>
+    <title>Analisador de Extrato</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -14,7 +12,7 @@
         }
 
         .container {
-            max-width: 1000px;
+            max-width: 900px;
             margin: 0 auto;
             background: white;
             padding: 20px;
@@ -24,44 +22,6 @@
         h1 {
             text-align: center;
             color: #333;
-        }
-
-        .mode-selector {
-            display: flex;
-            justify-content: center;
-            gap: 20px;
-            margin: 20px 0;
-            padding: 15px;
-            background: #f8f9fa;
-            border-radius: 5px;
-        }
-
-        .mode-option {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .mode-option input[type="radio"] {
-            transform: scale(1.2);
-        }
-
-        .mode-description {
-            text-align: center;
-            padding: 10px;
-            margin: 10px 0;
-            border-radius: 5px;
-            font-size: 14px;
-        }
-
-        .mode-python {
-            background: #e3f2fd;
-            color: #1565c0;
-        }
-
-        .mode-js {
-            background: #fff3e0;
-            color: #ef6c00;
         }
 
         .upload-box {
@@ -113,12 +73,6 @@
             border-left-color: #28a745;
             background: #d4edda;
             color: #155724;
-        }
-
-        .warning {
-            border-left-color: #ffc107;
-            background: #fff3cd;
-            color: #856404;
         }
 
         .results {
@@ -218,32 +172,12 @@
             .stat {
                 min-width: auto;
             }
-
-            .mode-selector {
-                flex-direction: column;
-                align-items: center;
-            }
         }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>Analisador de Extrato</h1>
-        
-        <div class="mode-selector">
-            <div class="mode-option">
-                <input type="radio" id="modePython" name="processingMode" value="python" checked>
-                <label for="modePython">Python (Servidor)</label>
-            </div>
-            <div class="mode-option">
-                <input type="radio" id="modeJS" name="processingMode" value="javascript">
-                <label for="modeJS">JavaScript (Local)</label>
-            </div>
-        </div>
-
-        <div class="mode-description">
-            <strong>Modo Python:</strong> Processamento no servidor com maior precisão e recursos avançados. Requer backend funcionando.
-        </div>
         
         <div class="upload-box">
             <h3>Carregar Arquivos</h3>
@@ -307,21 +241,6 @@
         let csvFile = null;
         let excelFile = null;
         let processedResults = null;
-        let categoriesDict = null;
-
-        // Atualizar descrição do modo
-        document.querySelectorAll('input[name="processingMode"]').forEach(radio => {
-            radio.addEventListener('change', function() {
-                const description = document.getElementById('modeDescription');
-                if (this.value === 'python') {
-                    description.className = 'mode-description mode-python';
-                    description.innerHTML = '<strong>Modo Python:</strong> Processamento no servidor com maior precisão e recursos avançados. Requer backend funcionando.';
-                } else {
-                    description.className = 'mode-description mode-js';
-                    description.innerHTML = '<strong>JavaScript:</strong> Processamento local no navegador. Funciona offline, mas com recursos limitados.';
-                }
-            });
-        });
 
         function handleFileSelect(event, type) {
             const file = event.target.files[0];
@@ -361,17 +280,6 @@
             }
 
             showLoading(true);
-            
-            const mode = document.querySelector('input[name="processingMode"]:checked').value;
-            
-            if (mode === 'python') {
-                await processPython();
-            } else {
-                await processJavaScript();
-            }
-        }
-
-        async function processPython() {
             updateProcessingStatus('Processando com Python...', 'status');
 
             const formData = new FormData();
@@ -380,226 +288,29 @@
             formData.append('incluir_creditos', document.getElementById('includeCredits').checked);
 
             try {
-                const response = await fetch('/api/process_extrato', {
+                const response = await fetch('/api', {
                     method: 'POST',
                     body: formData
                 });
 
                 if (!response.ok) {
-                    if (response.status === 405) {
-                        throw new Error('Servidor Python não está rodando. Tente o modo JavaScript.');
-                    }
                     throw new Error(`Erro ${response.status}: ${response.statusText}`);
                 }
 
                 const data = await response.json();
                 
                 if (data.success) {
-                    updateProcessingStatus('Processado com Python - Precisão máxima!', 'success');
+                    updateProcessingStatus('Processado com Python!', 'success');
                     displayResults(data);
                 } else {
                     throw new Error(data.error || 'Erro desconhecido');
                 }
 
             } catch (error) {
-                updateProcessingStatus(`Erro Python: ${error.message}`, 'error');
+                updateProcessingStatus(`Erro: ${error.message}`, 'error');
             } finally {
                 showLoading(false);
             }
-        }
-
-        async function processJavaScript() {
-            updateProcessingStatus('Processando com JavaScript...', 'status');
-
-            try {
-                // Processar Excel
-                const excelData = await readFileAsArrayBuffer(excelFile);
-                const workbook = XLSX.read(excelData);
-                const worksheet = workbook.Sheets[workbook.SheetNames[0]];
-                const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
-
-                // Extrair categorias
-                categoriesDict = {};
-                let currentCategory = null;
-
-                jsonData.forEach((row, index) => {
-                    if (index === 0) return; // pular cabeçalho
-                    
-                    const [grupo, nome] = row;
-                    
-                    if (grupo && grupo.toString().trim() !== '') {
-                        currentCategory = grupo.toString().trim();
-                    }
-                    
-                    if (nome && nome.toString().trim() !== '' && currentCategory) {
-                        const palavra = nome.toString().trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-                        categoriesDict[palavra] = currentCategory;
-                    }
-                });
-
-                // Processar CSV
-                let csvText = await readFileAsText(csvFile);
-                
-                // Limpar caracteres problemáticos de codificação
-                csvText = csvText
-                    .replace(/Hist�rico/g, 'Historico')
-                    .replace(/N�mero/g, 'Numero')
-                    .replace(/�/g, 'o');
-
-                const csvData = Papa.parse(csvText, {
-                    header: true,
-                    dynamicTyping: true,
-                    skipEmptyLines: true,
-                    delimiter: ',',
-                    quoteChar: '"'
-                });
-
-                if (csvData.errors.length > 0) {
-                    console.warn('Avisos no CSV:', csvData.errors);
-                }
-
-                // Detectar formato do CSV automaticamente
-                let transactions = [];
-                const sampleRow = csvData.data[0];
-                
-                if (sampleRow && ('Descrição' in sampleRow || 'Descrição' in sampleRow)) {
-                    // Formato antigo: Data,Agência,Descrição,Documento,Valor,Tipo
-                    transactions = csvData.data.filter(row => 
-                        (row.Descrição || row['Descrição']) && row.Valor && row.Tipo
-                    );
-                    
-                    transactions = transactions.map(row => ({
-                        Data: row.Data,
-                        Agencia: row.Agência || row['Agência'] || '',
-                        Descricao: row.Descrição || row['Descrição'] || '',
-                        Documento: row.Documento || '',
-                        Valor: Math.abs(parseFloat(row.Valor) || 0),
-                        Tipo: row.Tipo || (parseFloat(row.Valor) >= 0 ? 'C' : 'D')
-                    }));
-                    
-                } else if (sampleRow && (sampleRow.Historico || sampleRow['Histórico'])) {
-                    // Formato novo: Data,Dependencia Origem,Histórico,Data do Balancete,Número do documento,Valor
-                    transactions = csvData.data.filter(row => {
-                        const historico = row.Historico || row['Histórico'] || '';
-                        const valor = parseFloat(row.Valor);
-                        return historico && !isNaN(valor) && historico !== 'Saldo Anterior';
-                    });
-                    
-                    transactions = transactions.map(row => {
-                        const valor = parseFloat(row.Valor) || 0;
-                        return {
-                            Data: row.Data,
-                            Agencia: row['Dependencia Origem'] || '',
-                            Descricao: row.Historico || row['Histórico'] || '',
-                            Documento: row['Numero do documento'] || row['Número do documento'] || '',
-                            Valor: Math.abs(valor),
-                            Tipo: valor >= 0 ? 'C' : 'D'
-                        };
-                    });
-                } else {
-                    throw new Error('Formato de CSV não reconhecido. Verifique as colunas.');
-                }
-
-                // Filtrar créditos se necessário
-                const includeCredits = document.getElementById('includeCredits').checked;
-                if (!includeCredits) {
-                    transactions = transactions.filter(row => row.Tipo === 'D');
-                }
-
-                // Categorizar
-                const categorizedResults = {};
-                
-                transactions.forEach(transaction => {
-                    const category = categorizeTransaction(transaction.Descricao);
-                    
-                    if (!categorizedResults[category]) {
-                        categorizedResults[category] = {
-                            categoria: category,
-                            total: 0,
-                            quantidade: 0,
-                            itens: []
-                        };
-                    }
-                    
-                    const valor = parseFloat(transaction.Valor) || 0;
-                    categorizedResults[category].total += valor;
-                    categorizedResults[category].quantidade += 1;
-                    categorizedResults[category].itens.push({
-                        data: transaction.Data,
-                        descricao: transaction.Descricao,
-                        valor: valor,
-                        tipo: transaction.Tipo,
-                        documento: transaction.Documento || ''
-                    });
-                });
-
-                // Calcular percentuais
-                const totalValue = Object.values(categorizedResults).reduce((sum, cat) => sum + cat.total, 0);
-                Object.values(categorizedResults).forEach(category => {
-                    category.percentual = totalValue > 0 ? (category.total / totalValue) * 100 : 0;
-                });
-
-                // Ordenar por valor
-                const sortedResults = Object.values(categorizedResults).sort((a, b) => b.total - a.total);
-
-                // Estatísticas
-                const stats = {
-                    total_transacoes: transactions.length,
-                    total_debitos: transactions.filter(t => t.Tipo === 'D').length,
-                    total_creditos: transactions.filter(t => t.Tipo === 'C').length,
-                    valor_total: totalValue
-                };
-
-                const result = {
-                    success: true,
-                    estatisticas: stats,
-                    categorias: sortedResults,
-                    excel_file: null // JavaScript não gera Excel
-                };
-
-                updateProcessingStatus('Processado com JavaScript - Modo offline!', 'success');
-                displayResults(result);
-
-            } catch (error) {
-                updateProcessingStatus(`Erro JavaScript: ${error.message}`, 'error');
-            } finally {
-                showLoading(false);
-            }
-        }
-
-        function categorizeTransaction(description) {
-            if (!description) return 'Outros';
-            
-            const normalizedDesc = description.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-            
-            // Ordenar palavras-chave por tamanho (maiores primeiro)
-            const sortedKeywords = Object.keys(categoriesDict).sort((a, b) => b.length - a.length);
-            
-            for (const keyword of sortedKeywords) {
-                if (normalizedDesc.includes(keyword)) {
-                    return categoriesDict[keyword];
-                }
-            }
-            
-            return 'Outros';
-        }
-
-        function readFileAsArrayBuffer(file) {
-            return new Promise((resolve, reject) => {
-                const reader = new FileReader();
-                reader.onload = e => resolve(e.target.result);
-                reader.onerror = reject;
-                reader.readAsArrayBuffer(file);
-            });
-        }
-
-        function readFileAsText(file) {
-            return new Promise((resolve, reject) => {
-                const reader = new FileReader();
-                reader.onload = e => resolve(e.target.result);
-                reader.onerror = reject;
-                reader.readAsText(file, 'utf-8');
-            });
         }
 
         function updateProcessingStatus(message, type) {
@@ -696,12 +407,8 @@
 
             document.getElementById('results').style.display = 'block';
             
-            // Habilitar download apenas se tiver arquivo Excel (modo Python)
             if (processedResults.excelFile) {
                 document.getElementById('downloadBtn').disabled = false;
-            } else {
-                document.getElementById('downloadBtn').disabled = true;
-                updateProcessingStatus('Download Excel disponível apenas no modo Python', 'warning');
             }
         }
 
@@ -727,7 +434,7 @@
 
         function downloadResults() {
             if (!processedResults || !processedResults.excelFile) {
-                showError('Arquivo Excel não disponível. Use o modo Python para gerar Excel.');
+                showError('Arquivo Excel não disponível.');
                 return;
             }
 
@@ -764,7 +471,6 @@
             csvFile = null;
             excelFile = null;
             processedResults = null;
-            categoriesDict = null;
             
             document.getElementById('csvFile').value = '';
             document.getElementById('excelFile').value = '';
