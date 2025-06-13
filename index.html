@@ -228,32 +228,32 @@
 </head>
 <body>
     <div class="container">
-        <h1>🔍 Analisador de Extrato</h1>
+        <h1>Analisador de Extrato</h1>
         
         <div class="mode-selector">
             <div class="mode-option">
                 <input type="radio" id="modePython" name="processingMode" value="python" checked>
-                <label for="modePython">🐍 Usar Python (Servidor)</label>
+                <label for="modePython">Python (Servidor)</label>
             </div>
             <div class="mode-option">
                 <input type="radio" id="modeJS" name="processingMode" value="javascript">
-                <label for="modeJS">💻 JavaScript (Local)</label>
+                <label for="modeJS">JavaScript (Local)</label>
             </div>
         </div>
 
-        <div id="modeDescription" class="mode-description mode-python">
-            🐍 <strong>Modo Python:</strong> Processamento no servidor com maior precisão e recursos avançados. Requer backend funcionando.
+        <div class="mode-description">
+            <strong>Modo Python:</strong> Processamento no servidor com maior precisão e recursos avançados. Requer backend funcionando.
         </div>
         
         <div class="upload-box">
-            <h3>📁 Carregar Arquivos</h3>
+            <h3>Carregar Arquivos</h3>
             <div>
-                <label>📊 Extrato CSV:</label>
+                <label>Extrato CSV:</label>
                 <input type="file" id="csvFile" accept=".csv" onchange="handleFileSelect(event, 'csv')">
                 <div id="csvStatus"></div>
             </div>
             <div>
-                <label>📋 Categorias Excel:</label>
+                <label>Categorias Excel:</label>
                 <input type="file" id="excelFile" accept=".xlsx,.xls" onchange="handleFileSelect(event, 'excel')">
                 <div id="excelStatus"></div>
             </div>
@@ -261,24 +261,23 @@
 
         <div class="checkbox-container">
             <input type="checkbox" id="includeCredits">
-            <label for="includeCredits">💰 Incluir créditos (entradas) na análise</label>
+            <label for="includeCredits">Incluir créditos (entradas) na análise</label>
         </div>
 
         <div style="text-align: center;">
-            <button onclick="processFiles()" id="processBtn" disabled>🔍 Analisar</button>
-            <button onclick="downloadResults()" id="downloadBtn" disabled>📥 Baixar Excel</button>
-            <button onclick="resetForm()">🔄 Limpar</button>
+            <button onclick="processFiles()" id="processBtn" disabled>Analisar</button>
+            <button onclick="downloadResults()" id="downloadBtn" disabled>Baixar Excel</button>
+            <button onclick="resetForm()">Limpar</button>
         </div>
 
         <div id="processingStatus"></div>
 
         <div class="loading" id="loading">
-            <div style="font-size: 20px;">⏳</div>
             <p>Processando arquivos...</p>
         </div>
 
         <div class="results" id="results">
-            <h2>📈 Resultados da Análise</h2>
+            <h2>Resultados da Análise</h2>
             
             <div class="stats">
                 <div class="stat">
@@ -299,7 +298,7 @@
                 </div>
             </div>
 
-            <h3>📊 Categorias</h3>
+            <h3>Categorias</h3>
             <div id="categoryList"></div>
         </div>
     </div>
@@ -316,10 +315,10 @@
                 const description = document.getElementById('modeDescription');
                 if (this.value === 'python') {
                     description.className = 'mode-description mode-python';
-                    description.innerHTML = '🐍 <strong>Modo Python:</strong> Processamento no servidor com maior precisão e recursos avançados. Requer backend funcionando.';
+                    description.innerHTML = '<strong>Modo Python:</strong> Processamento no servidor com maior precisão e recursos avançados. Requer backend funcionando.';
                 } else {
                     description.className = 'mode-description mode-js';
-                    description.innerHTML = '💻 <strong>JavaScript:</strong> Processamento local no navegador. Funciona offline, mas com recursos limitados.';
+                    description.innerHTML = '<strong>JavaScript:</strong> Processamento local no navegador. Funciona offline, mas com recursos limitados.';
                 }
             });
         });
@@ -335,7 +334,7 @@
                     excelFile = file;
                 }
                 
-                statusDiv.innerHTML = `<div class="status success">✅ ${file.name} (${formatFileSize(file.size)})</div>`;
+                statusDiv.innerHTML = `<div class="status success">✓ ${file.name} (${formatFileSize(file.size)})</div>`;
                 checkFilesLoaded();
             }
         }
@@ -373,7 +372,7 @@
         }
 
         async function processPython() {
-            updateProcessingStatus('🐍 Processando com Python...', 'status');
+            updateProcessingStatus('Processando com Python...', 'status');
 
             const formData = new FormData();
             formData.append('csv_file', csvFile);
@@ -396,21 +395,21 @@
                 const data = await response.json();
                 
                 if (data.success) {
-                    updateProcessingStatus('🐍 Processado com Python - Precisão máxima!', 'success');
+                    updateProcessingStatus('Processado com Python - Precisão máxima!', 'success');
                     displayResults(data);
                 } else {
                     throw new Error(data.error || 'Erro desconhecido');
                 }
 
             } catch (error) {
-                updateProcessingStatus(`❌ Erro Python: ${error.message}`, 'error');
+                updateProcessingStatus(`Erro Python: ${error.message}`, 'error');
             } finally {
                 showLoading(false);
             }
         }
 
         async function processJavaScript() {
-            updateProcessingStatus('💻 Processando com JavaScript...', 'status');
+            updateProcessingStatus('Processando com JavaScript...', 'status');
 
             try {
                 // Processar Excel
@@ -558,11 +557,11 @@
                     excel_file: null // JavaScript não gera Excel
                 };
 
-                updateProcessingStatus('💻 Processado com JavaScript - Modo offline!', 'success');
+                updateProcessingStatus('Processado com JavaScript - Modo offline!', 'success');
                 displayResults(result);
 
             } catch (error) {
-                updateProcessingStatus(`❌ Erro JavaScript: ${error.message}`, 'error');
+                updateProcessingStatus(`Erro JavaScript: ${error.message}`, 'error');
             } finally {
                 showLoading(false);
             }
@@ -674,12 +673,12 @@
                         }
                         
                         const description = categoryItem.description || 'Sem descrição';
-                        const tipo = categoryItem.tipo === 'C' ? '💰' : '💸';
+                        const tipo = categoryItem.tipo === 'C' ? ' (Crédito)' : ' (Débito)';
                         
                         itemDiv.innerHTML = `
                             <div>
                                 <strong>${itemIndex + 1}.</strong> ${description} ${tipo}
-                                <br><small>📅 ${formattedDate}</small>
+                                <br><small>${formattedDate}</small>
                             </div>
                             <div>
                                 <strong>${formatCurrency(categoryItem.value)}</strong>
@@ -702,7 +701,7 @@
                 document.getElementById('downloadBtn').disabled = false;
             } else {
                 document.getElementById('downloadBtn').disabled = true;
-                updateProcessingStatus('⚠️ Download Excel disponível apenas no modo Python', 'warning');
+                updateProcessingStatus('Download Excel disponível apenas no modo Python', 'warning');
             }
         }
 
@@ -723,7 +722,7 @@
         }
 
         function showError(message) {
-            updateProcessingStatus(`❌ ${message}`, 'error');
+            updateProcessingStatus(message, 'error');
         }
 
         function downloadResults() {
@@ -754,7 +753,7 @@
                 link.download = filename;
                 link.click();
                 
-                updateProcessingStatus('📥 Excel baixado com sucesso!', 'success');
+                updateProcessingStatus('Excel baixado com sucesso!', 'success');
                 
             } catch (error) {
                 showError('Erro ao baixar Excel. Tente novamente.');

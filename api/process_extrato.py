@@ -7,6 +7,7 @@ import io
 import base64
 import openpyxl
 import re
+import urllib.parse
 
 def categorizar_item(descricao, categorias_dict):
     """Categoriza um item baseado na descrição"""
@@ -57,23 +58,49 @@ def processar_categorias_excel(excel_data):
 def processar_extrato_csv(csv_data, incluir_creditos=False):
     """Processa CSV do extrato"""
     try:
-        df = pd.read_csv(io.BytesIO(csv_data), encoding='utf-8')
+        # Tentar UTF-8 primeiro, depois Latin-1
+        try:
+            csv_string = csv_data.decode('utf-8')
+        except UnicodeDecodeError:
+            csv_string = csv_data.decode('latin1')
         
-        # Verificar colunas
-        colunas_necessarias = ['Data', 'Descrição', 'Valor', 'Tipo']
-        for coluna in colunas_necessarias:
-            if coluna not in df.columns:
-                raise Exception(f"Coluna '{coluna}' não encontrada")
+        # Limpar caracteres problemáticos
+        csv_string = csv_string.replace('Histórico', 'Historico').replace('Número', 'Numero')
         
-        # Limpar dados
-        df = df.dropna(subset=['Descrição', 'Valor'])
-        df['Valor'] = pd.to_numeric(df['Valor'], errors='coerce')
-        df = df.dropna(subset=['Valor'])
-        df['Data'] = pd.to_datetime(df['Data'], errors='coerce')
+        df = pd.read_csv(io.StringIO(csv_string))
         
-        # Filtrar por tipo
-        if not incluir_creditos:
-            df = df[df['Tipo'] == 'D']
+        # Detectar formato automaticamente
+        if 'Descrição' in df.columns:
+            # Formato antigo
+            df = df.dropna(subset=['Descrição', 'Valor'])
+            df['Valor'] = pd.to_numeric(df['Valor'], errors='coerce')
+            df = df.dropna(subset=['Valor'])
+            df['Data'] = pd.to_datetime(df['Data'], errors='coerce')
+            
+            if not incluir_creditos:
+                df = df[df['Tipo'] == 'D']
+                
+        elif 'Historico' in df.columns or 'Histórico' in df.columns:
+            # Formato novo
+            hist_col = 'Historico' if 'Historico' in df.columns else 'Histórico'
+            df = df.dropna(subset=[hist_col, 'Valor'])
+            df = df[df[hist_col] != 'Saldo Anterior']
+            
+            df['Valor'] = pd.to_numeric(df['Valor'], errors='coerce')
+            df = df.dropna(subset=['Valor'])
+            df['Data'] = pd.to_datetime(df['Data'], errors='coerce')
+            
+            # Converter para formato padrão
+            df['Descrição'] = df[hist_col]
+            df['Agência'] = df.get('Dependencia Origem', '')
+            df['Documento'] = df.get('Numero do documento', df.get('Número do documento', ''))
+            df['Tipo'] = df['Valor'].apply(lambda x: 'C' if x >= 0 else 'D')
+            df['Valor'] = df['Valor'].abs()
+            
+            if not incluir_creditos:
+                df = df[df['Tipo'] == 'D']
+        else:
+            raise Exception("Formato de CSV não reconhecido")
         
         return df
     except Exception as e:
@@ -101,7 +128,7 @@ def gerar_excel_completo(resultados, dados_processados):
         ws_resumo.append(["Total de Transações", total_transacoes])
         ws_resumo.append(["Total de Débitos", total_debitos])
         ws_resumo.append(["Total de Créditos", total_creditos])
-        ws_resumo.append(["Valor Total", f"R$ {valor_total:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')])
+        ws_resumo.append(["Valor Total", f"R$ {valor_total:,.2f}"])
         ws_resumo.append([])
         
         # Resumo por categoria
@@ -109,37 +136,13 @@ def gerar_excel_completo(resultados, dados_processados):
         ws_resumo.append(["Categoria", "Valor Total", "Quantidade", "Percentual"])
         
         for resultado in resultados:
-            valor_formatado = f"R$ {resultado['total']:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
+            valor_formatado = f"R$ {resultado['total']:,.2f}"
             ws_resumo.append([
                 resultado['categoria'],
                 valor_formatado,
                 resultado['quantidade'],
                 f"{resultado['percentual']:.1f}%"
             ])
-        
-        # Aba para cada categoria
-        for resultado in resultados:
-            categoria = resultado['categoria']
-            nome_aba = re.sub(r'[\\/*?:"<>|]', '', categoria)[:31]
-            
-            ws_categoria = wb.create_sheet(nome_aba)
-            ws_categoria.append([f"CATEGORIA: {categoria}"])
-            ws_categoria.append([f"Total: R$ {resultado['total']:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')])
-            ws_categoria.append([f"Quantidade: {resultado['quantidade']} itens"])
-            ws_categoria.append([f"Percentual: {resultado['percentual']:.1f}%"])
-            ws_categoria.append([])
-            ws_categoria.append(["#", "Data", "Descrição", "Valor", "Tipo"])
-            
-            for i, item in enumerate(resultado['itens'], 1):
-                data_formatada = item['data'].strftime('%d/%m/%Y') if pd.notna(item['data']) else 'Sem data'
-                valor_formatado = f"R$ {item['valor']:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
-                tipo_formatado = "CRÉDITO" if item['tipo'] == 'C' else "DÉBITO"
-                
-                ws_categoria.append([i, data_formatada, item['descricao'], valor_formatado, tipo_formatado])
-            
-            ws_categoria.append([])
-            total_formatado = f"R$ {resultado['total']:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
-            ws_categoria.append(["", "", "TOTAL DA CATEGORIA:", total_formatado, ""])
         
         # Salvar em buffer
         excel_buffer = io.BytesIO()
@@ -150,33 +153,69 @@ def gerar_excel_completo(resultados, dados_processados):
     except Exception as e:
         raise Exception(f"Erro ao gerar Excel: {str(e)}")
 
-class handler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        """Lidar com requisições GET"""
-        if self.path == '/api/process_extrato' or self.path.endswith('/health'):
-            self.send_response(200)
-            self.send_header('Content-Type', 'application/json')
-            self.send_header('Access-Control-Allow-Origin', '*')
-            self.end_headers()
+def parse_multipart(body, boundary):
+    """Parse simples de multipart form data"""
+    parts = body.split(f'--{boundary}'.encode())
+    files = {}
+    form_data = {}
+    
+    for part in parts:
+        if b'Content-Disposition' not in part:
+            continue
             
-            response = {
-                'status': 'OK',
-                'message': 'API Python funcionando!',
-                'timestamp': datetime.now().isoformat()
-            }
-            self.wfile.write(json.dumps(response).encode())
-        else:
-            self.send_response(404)
-            self.end_headers()
+        lines = part.split(b'\r\n')
+        headers = []
+        content_start = 0
+        
+        for i, line in enumerate(lines):
+            if line == b'':
+                content_start = i + 1
+                break
+            headers.append(line.decode('utf-8', errors='ignore'))
+        
+        content = b'\r\n'.join(lines[content_start:]).rstrip(b'\r\n-')
+        
+        # Extrair nome do campo
+        for header in headers:
+            if 'name=' in header:
+                if 'filename=' in header:
+                    # É um arquivo
+                    name = header.split('name="')[1].split('"')[0]
+                    files[name] = content
+                else:
+                    # É um campo de texto
+                    name = header.split('name="')[1].split('"')[0]
+                    form_data[name] = content.decode('utf-8', errors='ignore')
+                break
+    
+    return files, form_data
+
+class handler(BaseHTTPRequestHandler):
+    def do_OPTIONS(self):
+        """CORS preflight"""
+        self.send_response(200)
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+        self.send_header('Access-Control-Allow-Headers', 'Content-Type')
+        self.end_headers()
+    
+    def do_GET(self):
+        """Health check"""
+        self.send_response(200)
+        self.send_header('Content-Type', 'application/json')
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.end_headers()
+        
+        response = {
+            'status': 'OK',
+            'message': 'API Python funcionando no Vercel!',
+            'timestamp': datetime.now().isoformat()
+        }
+        self.wfile.write(json.dumps(response).encode())
     
     def do_POST(self):
         """Processar upload de arquivos"""
         try:
-            if not self.path.startswith('/api/process_extrato'):
-                self.send_response(404)
-                self.end_headers()
-                return
-            
             # Ler dados do POST
             content_length = int(self.headers.get('Content-Length', 0))
             post_data = self.rfile.read(content_length)
@@ -189,24 +228,12 @@ class handler(BaseHTTPRequestHandler):
             # Extrair boundary
             boundary = content_type.split('boundary=')[1]
             
-            # Parse simples dos arquivos
-            parts = post_data.split(f'--{boundary}'.encode())
+            # Parse arquivos e dados
+            files, form_data = parse_multipart(post_data, boundary)
             
-            csv_data = None
-            excel_data = None
-            incluir_creditos = False
-            
-            for part in parts:
-                if b'name="csv_file"' in part:
-                    start = part.find(b'\r\n\r\n') + 4
-                    csv_data = part[start:].rstrip(b'\r\n-')
-                elif b'name="excel_file"' in part:
-                    start = part.find(b'\r\n\r\n') + 4
-                    excel_data = part[start:].rstrip(b'\r\n-')
-                elif b'name="incluir_creditos"' in part:
-                    start = part.find(b'\r\n\r\n') + 4
-                    value = part[start:].rstrip(b'\r\n-').decode()
-                    incluir_creditos = value.lower() == 'true'
+            csv_data = files.get('csv_file')
+            excel_data = files.get('excel_file')
+            incluir_creditos = form_data.get('incluir_creditos', 'false').lower() == 'true'
             
             if not csv_data or not excel_data:
                 raise Exception("Arquivos CSV e Excel são obrigatórios")
@@ -241,11 +268,11 @@ class handler(BaseHTTPRequestHandler):
                 itens_lista = []
                 for _, item in itens_categoria.iterrows():
                     itens_lista.append({
-                        'data': item['Data'],
+                        'data': item['Data'].isoformat() if pd.notna(item['Data']) else None,
                         'descricao': item['Descrição'],
                         'valor': float(item['Valor']),
                         'tipo': item['Tipo'],
-                        'documento': item.get('Documento', '')
+                        'documento': str(item.get('Documento', ''))
                     })
                 
                 resultados_detalhados.append({
@@ -278,7 +305,7 @@ class handler(BaseHTTPRequestHandler):
             self.send_header('Access-Control-Allow-Origin', '*')
             self.end_headers()
             
-            self.wfile.write(json.dumps(resposta, default=str).encode())
+            self.wfile.write(json.dumps(resposta).encode())
             
         except Exception as e:
             # Erro
@@ -289,11 +316,3 @@ class handler(BaseHTTPRequestHandler):
             
             error_response = {'success': False, 'error': str(e)}
             self.wfile.write(json.dumps(error_response).encode())
-    
-    def do_OPTIONS(self):
-        """CORS preflight"""
-        self.send_response(200)
-        self.send_header('Access-Control-Allow-Origin', '*')
-        self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
-        self.send_header('Access-Control-Allow-Headers', 'Content-Type')
-        self.end_headers()
