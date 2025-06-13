@@ -244,24 +244,103 @@ class handler(BaseHTTPRequestHandler):
     def gerar_excel(self, resultados, df):
         try:
             wb = openpyxl.Workbook()
-            ws = wb.active
-            ws.title = "Resumo"
+            wb.remove(wb.active)
             
-            # Cabeçalho
-            ws.append(["ANÁLISE DE EXTRATO BANCÁRIO"])
-            ws.append([f"Gerado em: {pd.Timestamp.now().strftime('%d/%m/%Y %H:%M')}"])
-            ws.append([])
+            # Aba Resumo
+            ws_resumo = wb.create_sheet("Resumo")
+            ws_resumo.append(["ANÁLISE DE EXTRATO BANCÁRIO"])
+            ws_resumo.append([f"Gerado em: {pd.Timestamp.now().strftime('%d/%m/%Y %H:%M')}"])
+            ws_resumo.append([])
             
-            # Estatísticas
-            ws.append(["Categoria", "Valor Total", "Quantidade", "Percentual"])
+            # Estatísticas gerais
+            total_transacoes = len(df)
+            total_debitos = len(df[df['Tipo'] == 'D'])
+            total_creditos = len(df[df['Tipo'] == 'C'])
+            valor_total = df['Valor'].sum()
+            
+            ws_resumo.append(["ESTATÍSTICAS GERAIS"])
+            ws_resumo.append(["Total de Transações", total_transacoes])
+            ws_resumo.append(["Total de Débitos", total_debitos])
+            ws_resumo.append(["Total de Créditos", total_creditos])
+            ws_resumo.append(["Valor Total", f"R$ {valor_total:,.2f}"])
+            ws_resumo.append([])
+            
+            # Resumo por categoria
+            ws_resumo.append(["RESUMO POR CATEGORIA"])
+            ws_resumo.append(["Categoria", "Valor Total", "Quantidade", "Percentual"])
             
             for resultado in resultados:
-                ws.append([
+                ws_resumo.append([
                     resultado['categoria'],
                     f"R$ {resultado['total']:,.2f}",
                     resultado['quantidade'],
                     f"{resultado['percentual']:.1f}%"
                 ])
+            
+            # Criar aba para cada categoria com itens detalhados
+            for resultado in resultados:
+                categoria = resultado['categoria']
+                
+                # Nome da aba (máximo 31 caracteres, sem caracteres especiais)
+                nome_aba = categoria.replace('/', '-').replace('\\', '-').replace('*', '-')
+                nome_aba = nome_aba.replace('?', '').replace(':', '-').replace('[', '').replace(']', '')
+                nome_aba = nome_aba[:31]  # Limite do Excel
+                
+                ws_categoria = wb.create_sheet(nome_aba)
+                
+                # Cabeçalho da categoria
+                ws_categoria.append([f"CATEGORIA: {categoria}"])
+                ws_categoria.append([f"Total: R$ {resultado['total']:,.2f}"])
+                ws_categoria.append([f"Quantidade: {resultado['quantidade']} itens"])
+                ws_categoria.append([f"Percentual: {resultado['percentual']:.1f}% do total"])
+                ws_categoria.append([])
+                
+                # Cabeçalho da tabela de itens
+                ws_categoria.append(["#", "Data", "Descrição", "Valor", "Tipo", "Documento"])
+                
+                # Itens da categoria
+                for i, item in enumerate(resultado['itens'], 1):
+                    # Formatar data
+                    if item['data']:
+                        try:
+                            if isinstance(item['data'], str):
+                                data_formatada = pd.to_datetime(item['data']).strftime('%d/%m/%Y')
+                            else:
+                                data_formatada = item['data'].strftime('%d/%m/%Y')
+                        except:
+                            data_formatada = str(item['data'])
+                    else:
+                        data_formatada = 'Sem data'
+                    
+                    # Formatar tipo
+                    tipo_formatado = "CRÉDITO" if item['tipo'] == 'C' else "DÉBITO"
+                    
+                    ws_categoria.append([
+                        i,
+                        data_formatada,
+                        item['descricao'],
+                        f"R$ {item['valor']:,.2f}",
+                        tipo_formatado,
+                        str(item['documento'])
+                    ])
+                
+                # Total da categoria
+                ws_categoria.append([])
+                ws_categoria.append(["", "", "TOTAL DA CATEGORIA:", f"R$ {resultado['total']:,.2f}", "", ""])
+                
+                # Ajustar largura das colunas
+                ws_categoria.column_dimensions['A'].width = 5
+                ws_categoria.column_dimensions['B'].width = 12
+                ws_categoria.column_dimensions['C'].width = 50
+                ws_categoria.column_dimensions['D'].width = 15
+                ws_categoria.column_dimensions['E'].width = 10
+                ws_categoria.column_dimensions['F'].width = 15
+            
+            # Ajustar largura das colunas do resumo
+            ws_resumo.column_dimensions['A'].width = 25
+            ws_resumo.column_dimensions['B'].width = 15
+            ws_resumo.column_dimensions['C'].width = 12
+            ws_resumo.column_dimensions['D'].width = 12
             
             # Salvar
             excel_buffer = io.BytesIO()
@@ -269,5 +348,6 @@ class handler(BaseHTTPRequestHandler):
             excel_buffer.seek(0)
             
             return base64.b64encode(excel_buffer.getvalue()).decode()
-        except:
+        except Exception as e:
+            print(f"Erro ao gerar Excel: {e}")
             return None
