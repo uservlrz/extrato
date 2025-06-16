@@ -304,7 +304,7 @@ class handler(BaseHTTPRequestHandler):
                     if item['data']:
                         try:
                             if isinstance(item['data'], str):
-                                data_formatada = pd.to_datetime(item['data']).strftime('%d/%m/%Y')
+                                data_formatada = pd.to_datetime(item['data'], dayfirst=True).strftime('%d/%m/%Y')
                             else:
                                 data_formatada = item['data'].strftime('%d/%m/%Y')
                         except:
