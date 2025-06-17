@@ -217,71 +217,54 @@ class handler(BaseHTTPRequestHandler):
             print(f"Analisando {len(linhas)} linhas...")
             
             # Mostrar primeiras linhas para debug
-            for i, linha in enumerate(linhas[:10]):
-                linha_mostra = linha[:150] + "..." if len(linha) > 150 else linha
+            for i, linha in enumerate(linhas[:8]):
+                linha_mostra = linha[:100] + "..." if len(linha) > 100 else linha
                 print(f"Linha {i}: {linha_mostra}")
             
-            # Verificar se é Bradesco
-            bradesco_indicators = 0
+            bradesco_score = 0
+            bb_score = 0
             
+            # Analisar cada linha
             for i, linha in enumerate(linhas[:15]):
                 linha_upper = linha.upper()
                 
-                # Indicadores específicos do Bradesco
-                if 'EXTRATO DE:' in linha_upper or 'AGÊNCIA:' in linha_upper:
-                    print(f"Bradesco detectado na linha {i}: contém 'Extrato de:' ou 'Agência:'")
-                    bradesco_indicators += 2
+                # Indicadores do Bradesco
+                if 'EXTRATO DE:' in linha_upper or 'AGÊNCIA:' in linha_upper or 'CONTA:' in linha_upper:
+                    bradesco_score += 3
+                    print(f"Bradesco +3 linha {i}: header info")
                 
                 if 'DATA;LANÇAMENTO;DCTO.' in linha_upper or 'DATA;LAN' in linha_upper:
-                    print(f"Bradesco detectado na linha {i}: cabeçalho com ';'")
-                    bradesco_indicators += 2
+                    bradesco_score += 3
+                    print(f"Bradesco +3 linha {i}: cabeçalho padrão")
                 
-                if (';' in linha and 
-                    ('LANÇAMENTO' in linha_upper or 'LANCAMENTO' in linha_upper) and
-                    ('CRÉDITO' in linha_upper or 'CREDITO' in linha_upper or 'DÉBITO' in linha_upper or 'DEBITO' in linha_upper)):
-                    print(f"Bradesco detectado na linha {i}: padrão de colunas com ';'")
-                    bradesco_indicators += 1
+                if linha.count('\r') > 5 and ';' in linha:
+                    bradesco_score += 2
+                    print(f"Bradesco +2 linha {i}: múltiplos \\r")
                 
-                # Verificar se tem dados do Bradesco (linhas longas com múltiplos \r)
-                if linha.count('\r') > 10 and ';' in linha:
-                    print(f"Bradesco detectado na linha {i}: múltiplos \\r com ';'")
-                    bradesco_indicators += 1
+                if re.search(r'\d{2}/\d{2}/\d{4};.*?(PIX|CIELO|TRANSFERENCIA)', linha):
+                    bradesco_score += 1
+                    print(f"Bradesco +1 linha {i}: padrão transação")
                 
-                # Padrões específicos de dados do Bradesco
-                if re.search(r'\d{2}/\d{2}/\d{4};.*CIELO|PIX|TRANSFERENCIA', linha):
-                    print(f"Bradesco detectado na linha {i}: padrão de transação típica")
-                    bradesco_indicators += 1
-            
-            if bradesco_indicators >= 2:
-                print(f"FORMATO BRADESCO DETECTADO (score: {bradesco_indicators})")
-                return 'bradesco'
-            
-            # Verificar se é Banco do Brasil
-            bb_indicators = 0
-            
-            for i, linha in enumerate(linhas[:10]):
-                linha_upper = linha.upper()
+                # Indicadores do Banco do Brasil
+                if '"DATA","DEPENDENCIA ORIGEM"' in linha_upper:
+                    bb_score += 3
+                    print(f"BB +3 linha {i}: cabeçalho dependencia")
                 
-                # Indicadores específicos do Banco do Brasil
-                if '"DATA","DEPENDENCIA ORIGEM","HIST' in linha_upper:
-                    print(f"Banco do Brasil detectado na linha {i}: padrão dependencia origem")
-                    bb_indicators += 2
+                if '"DATA"' in linha and '"HISTÓRICO"' in linha and '","' in linha:
+                    bb_score += 3
+                    print(f"BB +3 linha {i}: cabeçalho padrão")
                 
-                if '"DATA",' in linha and '"HISTÓRICO",' in linha:
-                    print(f"Banco do Brasil detectado na linha {i}: padrão com aspas e vírgulas")
-                    bb_indicators += 2
-                
-                if '"DATA",' in linha and ('"HISTORICO",' in linha or '"HIST' in linha):
-                    print(f"Banco do Brasil detectado na linha {i}: variação do padrão histórico")
-                    bb_indicators += 2
-                
-                # Verificar formato de dados do BB
                 if linha.count('","') > 3 and linha.startswith('"'):
-                    print(f"Banco do Brasil detectado na linha {i}: formato CSV com aspas")
-                    bb_indicators += 1
+                    bb_score += 1
+                    print(f"BB +1 linha {i}: formato CSV aspas")
             
-            if bb_indicators >= 2:
-                print(f"FORMATO BANCO DO BRASIL DETECTADO (score: {bb_indicators})")
+            print(f"Bradesco score: {bradesco_score}, BB score: {bb_score}")
+            
+            if bradesco_score >= bb_score and bradesco_score >= 2:
+                print(f"FORMATO BRADESCO DETECTADO (score: {bradesco_score})")
+                return 'bradesco'
+            elif bb_score >= 2:
+                print(f"FORMATO BANCO DO BRASIL DETECTADO (score: {bb_score})")
                 return 'banco_brasil'
             
             # Se nenhum formato foi claramente identificado, usar heurísticas adicionais
@@ -313,12 +296,6 @@ class handler(BaseHTTPRequestHandler):
             print("Processando CSV do Bradesco...")
             linhas = csv_string.split('\n')
             print(f"Total de linhas: {len(linhas)}")
-            
-            # O CSV do Bradesco tem uma estrutura específica:
-            # - Linha 1: vazia
-            # - Linha 2: ";Extrato de: Agência: XXXX Conta: XXX-X"
-            # - Linha 3: "Data;Lançamento;Dcto.;Crédito (R$);Débito (R$);Saldo (R$)"
-            # - Depois: dados em uma única linha longa separados por \r
             
             # Encontrar a linha que contém todos os dados
             linha_dados = None
@@ -434,38 +411,65 @@ class handler(BaseHTTPRequestHandler):
                 
                 # Converter para string e limpar
                 valor_str = str(valor).strip()
-                if not valor_str or valor_str == 'nan':
+                if not valor_str or valor_str == 'nan' or valor_str == '':
                     return 0.0
                 
                 # Remover pontos de milhares e trocar vírgula por ponto
                 valor_str = valor_str.replace('.', '').replace(',', '.')
                 
                 try:
-                    return float(valor_str)
+                    resultado = float(valor_str)
+                    return resultado
                 except Exception as e:
                     print(f"Erro ao processar valor '{valor}': {e}")
                     return 0.0
             
             # Processar valores monetários
+            print("Processando valores de crédito...")
             df['Credito'] = df['Credito'].apply(processar_valor_bradesco)
+            print("Processando valores de débito...")
             df['Debito'] = df['Debito'].apply(processar_valor_bradesco)
+            
+            # Debug: mostrar alguns valores processados
+            print(f"Primeiros 5 créditos: {df['Credito'].head().tolist()}")
+            print(f"Primeiros 5 débitos: {df['Debito'].head().tolist()}")
             
             # Criar coluna Valor unified e Tipo
             df['Valor'] = df['Credito'] + df['Debito']
             df['Tipo'] = df.apply(lambda row: 'C' if row['Credito'] > 0 else 'D', axis=1)
             
             print(f"Valores processados - Créditos: {(df['Tipo'] == 'C').sum()}, Débitos: {(df['Tipo'] == 'D').sum()}")
+            print(f"Valores > 0: {(df['Valor'] > 0).sum()}")
+            print(f"Valores = 0: {(df['Valor'] == 0).sum()}")
             
             # Filtrar créditos se necessário
             if not incluir_creditos:
+                df_antes = len(df)
                 df = df[df['Tipo'] == 'D']
-                print(f"Após filtrar créditos: {len(df)} linhas")
+                print(f"Após filtrar créditos: {len(df)} linhas (eram {df_antes})")
             
-            # Limpar dados
+            # Debug: mostrar dados antes da limpeza
+            if len(df) > 0:
+                print(f"Valores na coluna Valor antes da limpeza: min={df['Valor'].min()}, max={df['Valor'].max()}")
+                print(f"Amostra dos valores: {df['Valor'].head().tolist()}")
+            
+            # Limpar dados - MODIFICADO para ser mais permissivo
             df = df.dropna(subset=['Descricao'])
-            df = df[df['Valor'] > 0]
+            print(f"Após remover descrições vazias: {len(df)} linhas")
             
-            print(f"Após limpeza: {len(df)} linhas")
+            # Verificar se temos valores válidos antes de filtrar por valor > 0
+            valores_validos = df['Valor'] > 0
+            print(f"Linhas com valor > 0: {valores_validos.sum()}")
+            
+            if valores_validos.sum() == 0:
+                print("AVISO: Nenhuma linha tem valor > 0. Verificando todos os valores...")
+                print(f"Todos os valores únicos: {df['Valor'].unique()}")
+                # Se não há valores > 0, manter todas as linhas com valor diferente de NaN
+                df = df[df['Valor'].notna()]
+            else:
+                df = df[df['Valor'] > 0]
+            
+            print(f"Após limpeza final: {len(df)} linhas")
             
             # Processar datas
             try:
@@ -480,7 +484,7 @@ class handler(BaseHTTPRequestHandler):
             
             print(f"Resultado final: {len(resultado)} linhas")
             if len(resultado) > 0:
-                print(f"Amostra dos dados: {resultado.head().to_dict()}")
+                print(f"Amostra dos dados: {resultado.head(3).to_dict()}")
             
             return resultado
             
