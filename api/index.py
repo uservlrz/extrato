@@ -337,9 +337,14 @@ class handler(BaseHTTPRequestHandler):
             
             print(f"Cabeçalho identificado: {cabecalho}")
             
+            # DEBUG: Mostrar algumas partes para entender o conteúdo
+            print("=== PRIMEIRAS 10 PARTES ===")
+            for i, parte in enumerate(partes[:10]):
+                print(f"Parte {i}: {parte.strip()[:100]}...")
+            
             # Filtrar linhas de dados válidas (excluir saldo anterior, totais, etc.)
             linhas_dados = []
-            for parte in partes[1:]:
+            for i, parte in enumerate(partes[1:]):
                 linha_limpa = parte.strip()
                 if (linha_limpa and 
                     not linha_limpa.startswith('Total;') and 
@@ -350,6 +355,9 @@ class handler(BaseHTTPRequestHandler):
                     # Verificar se começa com uma data válida (DD/MM/YYYY)
                     if re.match(r'^\d{2}/\d{2}/\d{4};', linha_limpa):
                         linhas_dados.append(linha_limpa)
+                        # DEBUG: Mostrar as primeiras 5 linhas válidas
+                        if len(linhas_dados) <= 5:
+                            print(f"Linha válida {len(linhas_dados)}: {linha_limpa[:100]}...")
             
             print(f"Linhas de dados válidas encontradas: {len(linhas_dados)}")
             
@@ -419,7 +427,7 @@ class handler(BaseHTTPRequestHandler):
                 
                 try:
                     resultado = float(valor_str)
-                    return resultado
+                    return abs(resultado)  # SEMPRE retornar valor absoluto
                 except Exception as e:
                     print(f"Erro ao processar valor '{valor}': {e}")
                     return 0.0
@@ -434,42 +442,57 @@ class handler(BaseHTTPRequestHandler):
             print(f"Primeiros 5 créditos: {df['Credito'].head().tolist()}")
             print(f"Primeiros 5 débitos: {df['Debito'].head().tolist()}")
             
-            # Criar coluna Valor unified e Tipo
-            df['Valor'] = df['Credito'] + df['Debito']
+            # CORREÇÃO PRINCIPAL: Lógica correta para Valor e Tipo
+            # No Bradesco, se tem valor na coluna Crédito, é entrada (C)
+            # Se tem valor na coluna Débito, é saída (D)
+            
+            # Determinar o tipo baseado em qual coluna tem valor
             df['Tipo'] = df.apply(lambda row: 'C' if row['Credito'] > 0 else 'D', axis=1)
+            
+            # Para o valor final, usar o que estiver preenchido (crédito OU débito)
+            df['Valor'] = df.apply(lambda row: row['Credito'] if row['Credito'] > 0 else row['Debito'], axis=1)
             
             print(f"Valores processados - Créditos: {(df['Tipo'] == 'C').sum()}, Débitos: {(df['Tipo'] == 'D').sum()}")
             print(f"Valores > 0: {(df['Valor'] > 0).sum()}")
             print(f"Valores = 0: {(df['Valor'] == 0).sum()}")
+            
+            # Debug: mostrar distribuição de valores
+            if len(df) > 0:
+                print(f"Range de valores: {df['Valor'].min()} até {df['Valor'].max()}")
+                print(f"Alguns valores de exemplo: {df['Valor'].head(10).tolist()}")
             
             # Filtrar créditos se necessário
             if not incluir_creditos:
                 df_antes = len(df)
                 df = df[df['Tipo'] == 'D']
                 print(f"Após filtrar créditos: {len(df)} linhas (eram {df_antes})")
+                
+                # Debug: mostrar valores após filtro
+                if len(df) > 0:
+                    print(f"Valores dos débitos após filtro: {df['Valor'].head(10).tolist()}")
             
-            # Debug: mostrar dados antes da limpeza
-            if len(df) > 0:
-                print(f"Valores na coluna Valor antes da limpeza: min={df['Valor'].min()}, max={df['Valor'].max()}")
-                print(f"Amostra dos valores: {df['Valor'].head().tolist()}")
-            
-            # Limpar dados - MODIFICADO para ser mais permissivo
+            # Limpar dados - CORRIGIDO
             df = df.dropna(subset=['Descricao'])
             print(f"Após remover descrições vazias: {len(df)} linhas")
             
-            # Verificar se temos valores válidos antes de filtrar por valor > 0
-            valores_validos = df['Valor'] > 0
-            print(f"Linhas com valor > 0: {valores_validos.sum()}")
+            # Filtrar apenas valores válidos (> 0)
+            df = df[df['Valor'] > 0]
+            print(f"Após filtrar valores > 0: {len(df)} linhas")
             
-            if valores_validos.sum() == 0:
-                print("AVISO: Nenhuma linha tem valor > 0. Verificando todos os valores...")
-                print(f"Todos os valores únicos: {df['Valor'].unique()}")
-                # Se não há valores > 0, manter todas as linhas com valor diferente de NaN
-                df = df[df['Valor'].notna()]
-            else:
-                df = df[df['Valor'] > 0]
-            
-            print(f"Após limpeza final: {len(df)} linhas")
+            # Se ainda não temos dados, mostrar debug detalhado
+            if len(df) == 0:
+                print("ERRO: Nenhuma linha válida encontrada após processamento!")
+                print("Verificando dados originais...")
+                
+                # Recarregar para debug
+                df_debug = pd.read_csv(io.StringIO(csv_estruturado), delimiter=';')
+                df_debug = df_debug.rename(columns=mapeamento)
+                
+                print(f"Dados originais - primeiras 5 linhas:")
+                for i, row in df_debug.head().iterrows():
+                    print(f"  Linha {i}: Credito='{row.get('Credito', 'N/A')}', Debito='{row.get('Debito', 'N/A')}', Descricao='{row.get('Descricao', 'N/A')}'")
+                
+                return pd.DataFrame(columns=['Data', 'Descricao', 'Valor', 'Tipo', 'Documento'])
             
             # Processar datas
             try:
