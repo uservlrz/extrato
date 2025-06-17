@@ -463,13 +463,18 @@ class handler(BaseHTTPRequestHandler):
             
             # Filtrar créditos se necessário
             if not incluir_creditos:
+                # Se NÃO incluir créditos, mostrar APENAS débitos
                 df_antes = len(df)
                 df = df[df['Tipo'] == 'D']
-                print(f"Após filtrar créditos: {len(df)} linhas (eram {df_antes})")
+                print(f"Após filtrar créditos (apenas débitos): {len(df)} linhas (eram {df_antes})")
+            else:
+                # Se incluir créditos, mostrar TUDO (créditos + débitos)
+                print(f"Incluindo créditos: mantendo todas as {len(df)} linhas (créditos + débitos)")
                 
-                # Debug: mostrar valores após filtro
-                if len(df) > 0:
-                    print(f"Valores dos débitos após filtro: {df['Valor'].head(10).tolist()}")
+            # Debug: mostrar valores após filtro
+            if len(df) > 0:
+                print(f"Valores após filtro: {df['Valor'].head(10).tolist()}")
+                print(f"Tipos após filtro - Créditos: {(df['Tipo'] == 'C').sum()}, Débitos: {(df['Tipo'] == 'D').sum()}")
             
             # Limpar dados - CORRIGIDO
             df = df.dropna(subset=['Descricao'])
@@ -533,8 +538,10 @@ class handler(BaseHTTPRequestHandler):
             df['Agencia'] = df.get('Agência', df.get('Agencia', ''))
             df['Documento'] = df.get('Documento', '')
             
+            # Aplicar filtro de créditos
             if not incluir_creditos:
-                df = df[df['Tipo'] == 'D']
+                df = df[df['Tipo'] == 'D']  # Apenas débitos
+            # Se incluir_creditos = True, manter tudo (não filtrar)
                 
         elif 'Historico' in df.columns:
             # Formato novo
@@ -547,13 +554,18 @@ class handler(BaseHTTPRequestHandler):
             df['Tipo'] = df['Valor'].apply(lambda x: 'C' if x >= 0 else 'D')
             df['Valor'] = df['Valor'].abs()
             
+            # Aplicar filtro de créditos
             if not incluir_creditos:
-                df = df[df['Tipo'] == 'D']
+                df = df[df['Tipo'] == 'D']  # Apenas débitos
+            # Se incluir_creditos = True, manter tudo (não filtrar)
         else:
             raise Exception("Formato de CSV do Banco do Brasil não reconhecido")
         
         df['Valor'] = pd.to_numeric(df['Valor'], errors='coerce')
         df = df.dropna(subset=['Valor'])
+        
+        print(f"Banco do Brasil - Total final: {len(df)} linhas")
+        print(f"Créditos: {(df['Tipo'] == 'C').sum()}, Débitos: {(df['Tipo'] == 'D').sum()}")
         
         return df
     
