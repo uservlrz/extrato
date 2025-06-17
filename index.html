@@ -1,487 +1,696 @@
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Analisador de Extrato</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            margin: 20px;
-            background: #f5f5f5;
-        }
+from http.server import BaseHTTPRequestHandler
+import json
+import pandas as pd
+import io
+import base64
+import openpyxl
+import re
+import traceback
 
-        .container {
-            max-width: 900px;
-            margin: 0 auto;
-            background: white;
-            padding: 20px;
-            border: 1px solid #ccc;
-        }
-
-        h1 {
-            text-align: center;
-            color: #333;
-        }
-
-        .upload-box {
-            border: 2px solid #666;
-            padding: 20px;
-            margin: 20px 0;
-            text-align: center;
-            background: #fafafa;
-        }
-
-        input[type="file"] {
-            margin: 10px;
-            padding: 5px;
-        }
-
-        button {
-            background: #007bff;
-            color: white;
-            border: none;
-            padding: 10px 20px;
-            margin: 5px;
-            cursor: pointer;
-            border-radius: 4px;
-        }
-
-        button:disabled {
-            background: #ccc;
-            cursor: not-allowed;
-        }
-
-        button:hover:not(:disabled) {
-            background: #0056b3;
-        }
-
-        .status {
-            padding: 10px;
-            margin: 10px 0;
-            border-left: 4px solid #007bff;
-            background: #e7f3ff;
-        }
-
-        .error {
-            border-left-color: #dc3545;
-            background: #f8d7da;
-            color: #721c24;
-        }
-
-        .success {
-            border-left-color: #28a745;
-            background: #d4edda;
-            color: #155724;
-        }
-
-        .results {
-            display: none;
-            margin-top: 20px;
-        }
-
-        .stats {
-            display: flex;
-            gap: 20px;
-            margin: 20px 0;
-            flex-wrap: wrap;
-        }
-
-        .stat {
-            flex: 1;
-            min-width: 150px;
-            padding: 15px;
-            background: #e9ecef;
-            text-align: center;
-            border: 1px solid #ccc;
-        }
-
-        .stat-value {
-            font-size: 24px;
-            font-weight: bold;
-            color: #007bff;
-        }
-
-        .category {
-            border: 1px solid #ddd;
-            margin: 10px 0;
-            background: white;
-        }
-
-        .category-header {
-            padding: 15px;
-            background: #f8f9fa;
-            cursor: pointer;
-            border-bottom: 1px solid #ddd;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .category-header:hover {
-            background: #e9ecef;
-        }
-
-        .category-items {
-            display: none;
-            padding: 0;
-            max-height: 400px;
-            overflow-y: auto;
-        }
-
-        .category-items.show {
-            display: block;
-        }
-
-        .item {
-            padding: 10px 15px;
-            border-bottom: 1px solid #eee;
-            font-size: 14px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .item:last-child {
-            border-bottom: none;
-        }
-
-        .item:hover {
-            background: #f8f9fa;
-        }
-
-        .loading {
-            display: none;
-            text-align: center;
-            padding: 20px;
-        }
-
-        .checkbox-container {
-            margin: 15px 0;
-        }
-
-        .checkbox-container input {
-            margin-right: 8px;
-        }
-
-        @media (max-width: 600px) {
-            .stats {
-                flex-direction: column;
-            }
-            
-            .stat {
-                min-width: auto;
-            }
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>Analisador de Extrato</h1>
+class handler(BaseHTTPRequestHandler):
+    def do_OPTIONS(self):
+        self.send_response(200)
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+        self.send_header('Access-Control-Allow-Headers', 'Content-Type')
+        self.end_headers()
+    
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header('Content-Type', 'application/json')
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.end_headers()
         
-        <div class="upload-box">
-            <h3>Carregar Arquivos</h3>
-            <div>
-                <label>Extrato CSV:</label>
-                <input type="file" id="csvFile" accept=".csv" onchange="handleFileSelect(event, 'csv')">
-                <div id="csvStatus"></div>
-            </div>
-            <div>
-                <label>Categorias Excel:</label>
-                <input type="file" id="excelFile" accept=".xlsx,.xls" onchange="handleFileSelect(event, 'excel')">
-                <div id="excelStatus"></div>
-            </div>
-        </div>
-
-        <div class="checkbox-container">
-            <input type="checkbox" id="includeCredits">
-            <label for="includeCredits">Incluir créditos (entradas) na análise</label>
-        </div>
-
-        <div style="text-align: center;">
-            <button onclick="processFiles()" id="processBtn" disabled>Analisar</button>
-            <button onclick="downloadResults()" id="downloadBtn" disabled>Baixar Excel</button>
-            <button onclick="resetForm()">Limpar</button>
-        </div>
-
-        <div id="processingStatus"></div>
-
-        <div class="loading" id="loading">
-            <p>Processando arquivos...</p>
-        </div>
-
-        <div class="results" id="results">
-            <h2>Resultados da Análise</h2>
+        response = {'status': 'OK', 'message': 'API funcionando!'}
+        self.wfile.write(json.dumps(response).encode())
+    
+    def do_POST(self):
+        try:
+            print("=== INICIANDO PROCESSAMENTO ===")
             
-            <div class="stats">
-                <div class="stat">
-                    <div class="stat-value" id="totalTransactions">0</div>
-                    <div>Transações</div>
-                </div>
-                <div class="stat">
-                    <div class="stat-value" id="totalDebits">0</div>
-                    <div>Débitos</div>
-                </div>
-                <div class="stat">
-                    <div class="stat-value" id="totalCredits">0</div>
-                    <div>Créditos</div>
-                </div>
-                <div class="stat">
-                    <div class="stat-value" id="totalAmount">R$ 0,00</div>
-                    <div>Total</div>
-                </div>
-            </div>
-
-            <h3>Categorias</h3>
-            <div id="categoryList"></div>
-        </div>
-    </div>
-
-    <script>
-        let csvFile = null;
-        let excelFile = null;
-        let processedResults = null;
-
-        function handleFileSelect(event, type) {
-            const file = event.target.files[0];
-            const statusDiv = document.getElementById(type + 'Status');
+            content_length = int(self.headers.get('Content-Length', 0))
+            post_data = self.rfile.read(content_length)
+            print(f"Dados recebidos: {len(post_data)} bytes")
             
-            if (file) {
-                if (type === 'csv') {
-                    csvFile = file;
-                } else {
-                    excelFile = file;
-                }
-                
-                statusDiv.innerHTML = `<div class="status success">✓ ${file.name} (${formatFileSize(file.size)})</div>`;
-                checkFilesLoaded();
-            }
-        }
-
-        function formatFileSize(bytes) {
-            if (bytes === 0) return '0 Bytes';
-            const k = 1024;
-            const sizes = ['Bytes', 'KB', 'MB'];
-            const i = Math.floor(Math.log(bytes) / Math.log(k));
-            return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
-        }
-
-        function checkFilesLoaded() {
-            const processBtn = document.getElementById('processBtn');
-            if (csvFile && excelFile) {
-                processBtn.disabled = false;
-            }
-        }
-
-        async function processFiles() {
-            if (!csvFile || !excelFile) {
-                showError('Carregue ambos os arquivos primeiro.');
-                return;
-            }
-
-            showLoading(true);
-            updateProcessingStatus('Processando com Python...', 'status');
-
-            const formData = new FormData();
-            formData.append('csv_file', csvFile);
-            formData.append('excel_file', excelFile);
-            formData.append('incluir_creditos', document.getElementById('includeCredits').checked);
-
-            try {
-                const response = await fetch('/api', {
-                    method: 'POST',
-                    body: formData
-                });
-
-                if (!response.ok) {
-                    throw new Error(`Erro ${response.status}: ${response.statusText}`);
-                }
-
-                const data = await response.json();
-                
-                if (data.success) {
-                    updateProcessingStatus('Processado com Python!', 'success');
-                    displayResults(data);
-                } else {
-                    throw new Error(data.error || 'Erro desconhecido');
-                }
-
-            } catch (error) {
-                updateProcessingStatus(`Erro: ${error.message}`, 'error');
-            } finally {
-                showLoading(false);
-            }
-        }
-
-        function updateProcessingStatus(message, type) {
-            const statusDiv = document.getElementById('processingStatus');
-            statusDiv.innerHTML = `<div class="status ${type}">${message}</div>`;
-        }
-
-        function displayResults(data) {
-            processedResults = {
-                results: data.categorias.map(cat => ({
-                    category: cat.categoria,
-                    total: cat.total,
-                    count: cat.quantidade,
-                    percentage: cat.percentual,
-                    items: cat.itens.map(item => ({
-                        description: item.descricao,
-                        value: item.valor,
-                        date: item.data,
-                        tipo: item.tipo
-                    }))
-                })),
-                totalAmount: data.estatisticas.valor_total,
-                totalTransactions: data.estatisticas.total_transacoes,
-                totalDebits: data.estatisticas.total_debitos,
-                totalCredits: data.estatisticas.total_creditos,
-                excelFile: data.excel_file
-            };
-
-            document.getElementById('totalTransactions').textContent = processedResults.totalTransactions;
-            document.getElementById('totalDebits').textContent = processedResults.totalDebits;
-            document.getElementById('totalCredits').textContent = processedResults.totalCredits;
-            document.getElementById('totalAmount').textContent = formatCurrency(processedResults.totalAmount);
-
-            const listDiv = document.getElementById('categoryList');
-            listDiv.innerHTML = '';
+            content_type = self.headers.get('Content-Type', '')
+            if 'boundary=' not in content_type:
+                raise Exception("Content-Type inválido - boundary não encontrado")
             
-            processedResults.results.forEach((item, index) => {
-                const categoryDiv = document.createElement('div');
-                categoryDiv.className = 'category';
-                
-                const headerDiv = document.createElement('div');
-                headerDiv.className = 'category-header';
-                headerDiv.onclick = () => toggleCategoryItems(index);
-                headerDiv.innerHTML = `
-                    <div>
-                        <strong>${item.category}</strong><br>
-                        <small>${item.count} itens • ${item.percentage.toFixed(1)}% do total</small>
-                    </div>
-                    <div>
-                        <strong>${formatCurrency(item.total)}</strong>
-                    </div>
-                `;
-                
-                const itemsDiv = document.createElement('div');
-                itemsDiv.className = 'category-items';
-                itemsDiv.id = `items-${index}`;
-                
-                if (item.items && item.items.length > 0) {
-                    item.items.forEach((categoryItem, itemIndex) => {
-                        const itemDiv = document.createElement('div');
-                        itemDiv.className = 'item';
-                        
-                        let formattedDate = 'Sem data';
-                        if (categoryItem.date) {
-                            try {
-                                const date = new Date(categoryItem.date);
-                                formattedDate = date.toLocaleDateString('pt-BR');
-                            } catch (e) {
-                                formattedDate = categoryItem.date;
-                            }
-                        }
-                        
-                        const description = categoryItem.description || 'Sem descrição';
-                        const tipo = categoryItem.tipo === 'C' ? ' (Crédito)' : ' (Débito)';
-                        
-                        itemDiv.innerHTML = `
-                            <div>
-                                <strong>${itemIndex + 1}.</strong> ${description} ${tipo}
-                                <br><small>${formattedDate}</small>
-                            </div>
-                            <div>
-                                <strong>${formatCurrency(categoryItem.value)}</strong>
-                            </div>
-                        `;
-                        
-                        itemsDiv.appendChild(itemDiv);
-                    });
-                }
-                
-                categoryDiv.appendChild(headerDiv);
-                categoryDiv.appendChild(itemsDiv);
-                listDiv.appendChild(categoryDiv);
-            });
-
-            document.getElementById('results').style.display = 'block';
+            boundary = content_type.split('boundary=')[1]
+            print(f"Boundary: {boundary}")
             
-            if (processedResults.excelFile) {
-                document.getElementById('downloadBtn').disabled = false;
-            }
-        }
-
-        function toggleCategoryItems(index) {
-            const itemsDiv = document.getElementById(`items-${index}`);
-            itemsDiv.classList.toggle('show');
-        }
-
-        function formatCurrency(value) {
-            return new Intl.NumberFormat('pt-BR', {
-                style: 'currency',
-                currency: 'BRL'
-            }).format(value);
-        }
-
-        function showLoading(show) {
-            document.getElementById('loading').style.display = show ? 'block' : 'none';
-        }
-
-        function showError(message) {
-            updateProcessingStatus(message, 'error');
-        }
-
-        function downloadResults() {
-            if (!processedResults || !processedResults.excelFile) {
-                showError('Arquivo Excel não disponível.');
-                return;
-            }
-
-            try {
-                const today = new Date();
-                const dateStr = today.getDate().toString().padStart(2, '0') + '-' + 
-                             (today.getMonth() + 1).toString().padStart(2, '0') + '-' + 
-                             today.getFullYear();
-                const filename = `Analise_Extrato_${dateStr}.xlsx`;
-                
-                const binaryString = atob(processedResults.excelFile);
-                const bytes = new Uint8Array(binaryString.length);
-                for (let i = 0; i < binaryString.length; i++) {
-                    bytes[i] = binaryString.charCodeAt(i);
-                }
-                
-                const blob = new Blob([bytes], { 
-                    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
-                });
-                
-                const link = document.createElement('a');
-                link.href = URL.createObjectURL(blob);
-                link.download = filename;
-                link.click();
-                
-                updateProcessingStatus('Excel baixado com sucesso!', 'success');
-                
-            } catch (error) {
-                showError('Erro ao baixar Excel. Tente novamente.');
-            }
-        }
-
-        function resetForm() {
-            csvFile = null;
-            excelFile = null;
-            processedResults = null;
+            files, form_data = self.parse_multipart(post_data, boundary)
+            print(f"Arquivos encontrados: {list(files.keys())}")
+            print(f"Dados do formulário: {list(form_data.keys())}")
             
-            document.getElementById('csvFile').value = '';
-            document.getElementById('excelFile').value = '';
-            document.getElementById('csvStatus').innerHTML = '';
-            document.getElementById('excelStatus').innerHTML = '';
-            document.getElementById('includeCredits').checked = false;
-            document.getElementById('processBtn').disabled = true;
-            document.getElementById('downloadBtn').disabled = true;
-            document.getElementById('results').style.display = 'none';
-            document.getElementById('processingStatus').innerHTML = '';
-        }
-    </script>
-</body>
-</html>
+            csv_data = files.get('csv_file')
+            excel_data = files.get('excel_file')
+            incluir_creditos = form_data.get('incluir_creditos', 'false') == 'true'
+            
+            if not csv_data or not excel_data:
+                raise Exception("Arquivos necessários não foram enviados")
+            
+            print(f"CSV: {len(csv_data)} bytes")
+            print(f"Excel: {len(excel_data)} bytes")
+            print(f"Incluir créditos: {incluir_creditos}")
+            
+            # Processar Excel
+            print("Processando Excel...")
+            categorias = self.processar_excel(excel_data)
+            print(f"Categorias encontradas: {len(categorias)}")
+            
+            # Processar CSV (agora detecta automaticamente o formato)
+            print("Processando CSV...")
+            df = self.processar_csv(csv_data, incluir_creditos)
+            print(f"Linhas processadas: {len(df)}")
+            print(f"Colunas: {list(df.columns)}")
+            
+            # Categorizar
+            print("Categorizando transações...")
+            df['Categoria'] = df['Descricao'].apply(lambda x: self.categorizar(x, categorias))
+            
+            # Agrupar resultados
+            print("Agrupando resultados...")
+            resultados = df.groupby('Categoria').agg({
+                'Valor': ['sum', 'count']
+            }).reset_index()
+            
+            resultados.columns = ['categoria', 'total', 'quantidade']
+            valor_total = df['Valor'].sum()
+            
+            if valor_total > 0:
+                resultados['percentual'] = (resultados['total'] / valor_total) * 100
+            else:
+                resultados['percentual'] = 0
+            
+            resultados = resultados.sort_values('total', ascending=False)
+            
+            # Preparar resposta
+            print("Preparando resposta...")
+            categorias_detalhadas = []
+            for _, row in resultados.iterrows():
+                categoria = row['categoria']
+                itens_cat = df[df['Categoria'] == categoria]
+                
+                itens = []
+                for _, item in itens_cat.iterrows():
+                    # Tratar valores None/NaN na data
+                    data_valor = item['Data']
+                    if pd.isna(data_valor):
+                        data_formatada = None
+                    else:
+                        data_formatada = str(data_valor)
+                    
+                    itens.append({
+                        'data': data_formatada,
+                        'descricao': str(item['Descricao']),
+                        'valor': float(item['Valor']),
+                        'tipo': str(item['Tipo']),
+                        'documento': str(item.get('Documento', ''))
+                    })
+                
+                categorias_detalhadas.append({
+                    'categoria': categoria,
+                    'total': float(row['total']),
+                    'quantidade': int(row['quantidade']),
+                    'percentual': float(row['percentual']),
+                    'itens': itens
+                })
+            
+            # Gerar Excel
+            print("Gerando Excel...")
+            excel_b64 = self.gerar_excel(categorias_detalhadas, df)
+            
+            resposta = {
+                'success': True,
+                'estatisticas': {
+                    'total_transacoes': len(df),
+                    'total_debitos': len(df[df['Tipo'] == 'D']),
+                    'total_creditos': len(df[df['Tipo'] == 'C']),
+                    'valor_total': float(valor_total)
+                },
+                'categorias': categorias_detalhadas,
+                'excel_file': excel_b64
+            }
+            
+            print("Enviando resposta...")
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.end_headers()
+            self.wfile.write(json.dumps(resposta).encode())
+            print("=== PROCESSAMENTO CONCLUÍDO ===")
+            
+        except Exception as e:
+            print(f"ERRO: {str(e)}")
+            print(f"Traceback: {traceback.format_exc()}")
+            
+            self.send_response(500)
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.end_headers()
+            
+            error_response = {
+                'success': False, 
+                'error': str(e),
+                'traceback': traceback.format_exc()
+            }
+            self.wfile.write(json.dumps(error_response).encode())
+    
+    def parse_multipart(self, body, boundary):
+        parts = body.split(f'--{boundary}'.encode())
+        files = {}
+        form_data = {}
+        
+        for part in parts:
+            if b'Content-Disposition' not in part:
+                continue
+            
+            header_end = part.find(b'\r\n\r\n')
+            if header_end == -1:
+                continue
+            
+            header = part[:header_end].decode('utf-8', errors='ignore')
+            content = part[header_end + 4:].rstrip(b'\r\n-')
+            
+            if 'name="' in header:
+                name_start = header.find('name="') + 6
+                name_end = header.find('"', name_start)
+                name = header[name_start:name_end]
+                
+                if 'filename="' in header:
+                    files[name] = content
+                else:
+                    form_data[name] = content.decode('utf-8', errors='ignore')
+        
+        return files, form_data
+    
+    def processar_excel(self, excel_data):
+        try:
+            df = pd.read_excel(io.BytesIO(excel_data))
+            
+            if len(df.columns) < 2:
+                raise Exception("Excel deve ter pelo menos 2 colunas")
+            
+            df.columns = ['Grupo', 'Palavra_Chave'] + list(df.columns[2:])
+            
+            categorias = {}
+            categoria_atual = None
+            
+            for _, row in df.iterrows():
+                if pd.notna(row['Grupo']) and str(row['Grupo']).strip():
+                    categoria_atual = str(row['Grupo']).strip()
+                
+                if pd.notna(row['Palavra_Chave']) and categoria_atual:
+                    palavra = str(row['Palavra_Chave']).strip()
+                    categorias[palavra] = categoria_atual
+            
+            return categorias
+        except Exception as e:
+            raise Exception(f"Erro no Excel: {e}")
+    
+    def detectar_formato_csv(self, csv_string):
+        """Detecta se é Banco do Brasil ou Bradesco"""
+        try:
+            print("=== DETECTANDO FORMATO ===")
+            linhas = csv_string.split('\n')
+            print(f"Analisando {len(linhas)} linhas...")
+            
+            # Mostrar primeiras linhas para debug
+            for i, linha in enumerate(linhas[:10]):
+                linha_mostra = linha[:150] + "..." if len(linha) > 150 else linha
+                print(f"Linha {i}: {linha_mostra}")
+            
+            # Verificar se é Bradesco
+            bradesco_indicators = 0
+            
+            for i, linha in enumerate(linhas[:15]):
+                linha_upper = linha.upper()
+                
+                # Indicadores específicos do Bradesco
+                if 'EXTRATO DE:' in linha_upper or 'AGÊNCIA:' in linha_upper:
+                    print(f"Bradesco detectado na linha {i}: contém 'Extrato de:' ou 'Agência:'")
+                    bradesco_indicators += 2
+                
+                if 'DATA;LANÇAMENTO;DCTO.' in linha_upper or 'DATA;LAN' in linha_upper:
+                    print(f"Bradesco detectado na linha {i}: cabeçalho com ';'")
+                    bradesco_indicators += 2
+                
+                if (';' in linha and 
+                    ('LANÇAMENTO' in linha_upper or 'LANCAMENTO' in linha_upper) and
+                    ('CRÉDITO' in linha_upper or 'CREDITO' in linha_upper or 'DÉBITO' in linha_upper or 'DEBITO' in linha_upper)):
+                    print(f"Bradesco detectado na linha {i}: padrão de colunas com ';'")
+                    bradesco_indicators += 1
+                
+                # Verificar se tem dados do Bradesco (linhas longas com múltiplos \r)
+                if linha.count('\r') > 10 and ';' in linha:
+                    print(f"Bradesco detectado na linha {i}: múltiplos \\r com ';'")
+                    bradesco_indicators += 1
+                
+                # Padrões específicos de dados do Bradesco
+                if re.search(r'\d{2}/\d{2}/\d{4};.*CIELO|PIX|TRANSFERENCIA', linha):
+                    print(f"Bradesco detectado na linha {i}: padrão de transação típica")
+                    bradesco_indicators += 1
+            
+            if bradesco_indicators >= 2:
+                print(f"FORMATO BRADESCO DETECTADO (score: {bradesco_indicators})")
+                return 'bradesco'
+            
+            # Verificar se é Banco do Brasil
+            bb_indicators = 0
+            
+            for i, linha in enumerate(linhas[:10]):
+                linha_upper = linha.upper()
+                
+                # Indicadores específicos do Banco do Brasil
+                if '"DATA","DEPENDENCIA ORIGEM","HIST' in linha_upper:
+                    print(f"Banco do Brasil detectado na linha {i}: padrão dependencia origem")
+                    bb_indicators += 2
+                
+                if '"DATA",' in linha and '"HISTÓRICO",' in linha:
+                    print(f"Banco do Brasil detectado na linha {i}: padrão com aspas e vírgulas")
+                    bb_indicators += 2
+                
+                if '"DATA",' in linha and ('"HISTORICO",' in linha or '"HIST' in linha):
+                    print(f"Banco do Brasil detectado na linha {i}: variação do padrão histórico")
+                    bb_indicators += 2
+                
+                # Verificar formato de dados do BB
+                if linha.count('","') > 3 and linha.startswith('"'):
+                    print(f"Banco do Brasil detectado na linha {i}: formato CSV com aspas")
+                    bb_indicators += 1
+            
+            if bb_indicators >= 2:
+                print(f"FORMATO BANCO DO BRASIL DETECTADO (score: {bb_indicators})")
+                return 'banco_brasil'
+            
+            # Se nenhum formato foi claramente identificado, usar heurísticas adicionais
+            print("Tentando heurísticas adicionais...")
+            
+            # Contar separadores para decidir
+            uso_pontovirgula = sum(linha.count(';') for linha in linhas[:10])
+            uso_virgula = sum(linha.count(',') for linha in linhas[:10])
+            
+            print(f"Uso de ';': {uso_pontovirgula}, Uso de ',': {uso_virgula}")
+            
+            if uso_pontovirgula > uso_virgula * 1.5:
+                print("Formato Bradesco assumido por prevalência de ';'")
+                return 'bradesco'
+            elif uso_virgula > uso_pontovirgula * 1.5:
+                print("Formato Banco do Brasil assumido por prevalência de ','")
+                return 'banco_brasil'
+            
+            print("FORMATO NÃO RECONHECIDO")
+            return 'desconhecido'
+            
+        except Exception as e:
+            print(f"Erro na detecção de formato: {e}")
+            return 'desconhecido'
+    
+    def processar_csv_bradesco(self, csv_string, incluir_creditos):
+        """Processa CSV do Bradesco"""
+        try:
+            print("Processando CSV do Bradesco...")
+            linhas = csv_string.split('\n')
+            print(f"Total de linhas: {len(linhas)}")
+            
+            # O CSV do Bradesco tem uma estrutura específica:
+            # - Linha 1: vazia
+            # - Linha 2: ";Extrato de: Agência: XXXX Conta: XXX-X"
+            # - Linha 3: "Data;Lançamento;Dcto.;Crédito (R$);Débito (R$);Saldo (R$)"
+            # - Depois: dados em uma única linha longa separados por \r
+            
+            # Encontrar a linha que contém todos os dados
+            linha_dados = None
+            for i, linha in enumerate(linhas):
+                if ('Data;Lançamento;Dcto.' in linha or 'Data;Lan' in linha) and len(linha) > 100:
+                    linha_dados = linha
+                    print(f"Linha de dados encontrada na posição {i}")
+                    break
+            
+            if not linha_dados:
+                # Se não encontrou em uma linha, tentar encontrar o cabeçalho e pegar dados das próximas linhas
+                inicio_dados = -1
+                for i, linha in enumerate(linhas):
+                    if 'Data;Lançamento;Dcto.' in linha or 'Data;Lan' in linha:
+                        inicio_dados = i
+                        break
+                
+                if inicio_dados >= 0 and inicio_dados + 1 < len(linhas):
+                    # Concatenar as linhas de dados
+                    linha_dados = ''.join(linhas[inicio_dados:])
+                else:
+                    raise Exception("Não foi possível encontrar os dados no CSV do Bradesco")
+            
+            # Separar cabeçalho dos dados usando \r como separador
+            partes = linha_dados.split('\r')
+            print(f"Partes encontradas: {len(partes)}")
+            
+            if len(partes) < 2:
+                raise Exception("Formato de dados inválido no CSV do Bradesco")
+            
+            # O primeiro item deve ser o cabeçalho
+            cabecalho = partes[0].strip()
+            if not cabecalho.startswith('Data;'):
+                # Se não começar com Data, procurar nos primeiros itens
+                for parte in partes[:5]:
+                    if parte.strip().startswith('Data;'):
+                        cabecalho = parte.strip()
+                        break
+            
+            print(f"Cabeçalho identificado: {cabecalho}")
+            
+            # Filtrar linhas de dados válidas (excluir saldo anterior, totais, etc.)
+            linhas_dados = []
+            for parte in partes[1:]:
+                linha_limpa = parte.strip()
+                if (linha_limpa and 
+                    not linha_limpa.startswith('Total;') and 
+                    'SALDO ANTERIOR' not in linha_limpa and
+                    ';' in linha_limpa and
+                    linha_limpa.count(';') >= 4):  # Deve ter pelo menos 5 campos
+                    
+                    # Verificar se começa com uma data válida (DD/MM/YYYY)
+                    if re.match(r'^\d{2}/\d{2}/\d{4};', linha_limpa):
+                        linhas_dados.append(linha_limpa)
+            
+            print(f"Linhas de dados válidas encontradas: {len(linhas_dados)}")
+            
+            if len(linhas_dados) == 0:
+                raise Exception("Nenhuma linha de dados válida encontrada no CSV do Bradesco")
+            
+            # Criar CSV estruturado
+            csv_estruturado = cabecalho + '\n' + '\n'.join(linhas_dados)
+            print(f"CSV estruturado criado com {len(csv_estruturado)} caracteres")
+            
+            # Ler com pandas
+            try:
+                df = pd.read_csv(io.StringIO(csv_estruturado), delimiter=';')
+                print(f"DataFrame criado com {len(df)} linhas e colunas: {list(df.columns)}")
+            except Exception as e:
+                print(f"Erro ao criar DataFrame: {e}")
+                # Tentar com diferentes configurações
+                df = pd.read_csv(io.StringIO(csv_estruturado), delimiter=';', encoding='utf-8', on_bad_lines='skip')
+                print(f"DataFrame criado (modo alternativo) com {len(df)} linhas")
+            
+            # Mapear colunas do Bradesco para formato padrão
+            colunas_originais = df.columns.tolist()
+            print(f"Colunas originais: {colunas_originais}")
+            
+            # Criar mapeamento flexível
+            mapeamento = {}
+            for col in colunas_originais:
+                col_lower = col.lower().strip()
+                if 'data' in col_lower:
+                    mapeamento[col] = 'Data'
+                elif 'lançamento' in col_lower or 'lancamento' in col_lower:
+                    mapeamento[col] = 'Descricao'
+                elif 'dcto' in col_lower:
+                    mapeamento[col] = 'Documento'
+                elif 'crédito' in col_lower or 'credito' in col_lower:
+                    mapeamento[col] = 'Credito'
+                elif 'débito' in col_lower or 'debito' in col_lower:
+                    mapeamento[col] = 'Debito'
+                elif 'saldo' in col_lower:
+                    mapeamento[col] = 'Saldo'
+            
+            print(f"Mapeamento de colunas: {mapeamento}")
+            
+            # Aplicar mapeamento
+            df = df.rename(columns=mapeamento)
+            
+            # Garantir que as colunas essenciais existem
+            if 'Credito' not in df.columns:
+                df['Credito'] = 0.0
+            if 'Debito' not in df.columns:
+                df['Debito'] = 0.0
+            if 'Documento' not in df.columns:
+                df['Documento'] = ''
+            
+            # Função para processar valores monetários do Bradesco
+            def processar_valor_bradesco(valor):
+                if pd.isna(valor) or valor == '' or valor is None:
+                    return 0.0
+                
+                # Converter para string e limpar
+                valor_str = str(valor).strip()
+                if not valor_str or valor_str == 'nan':
+                    return 0.0
+                
+                # Remover pontos de milhares e trocar vírgula por ponto
+                valor_str = valor_str.replace('.', '').replace(',', '.')
+                
+                try:
+                    return float(valor_str)
+                except Exception as e:
+                    print(f"Erro ao processar valor '{valor}': {e}")
+                    return 0.0
+            
+            # Processar valores monetários
+            df['Credito'] = df['Credito'].apply(processar_valor_bradesco)
+            df['Debito'] = df['Debito'].apply(processar_valor_bradesco)
+            
+            # Criar coluna Valor unified e Tipo
+            df['Valor'] = df['Credito'] + df['Debito']
+            df['Tipo'] = df.apply(lambda row: 'C' if row['Credito'] > 0 else 'D', axis=1)
+            
+            print(f"Valores processados - Créditos: {(df['Tipo'] == 'C').sum()}, Débitos: {(df['Tipo'] == 'D').sum()}")
+            
+            # Filtrar créditos se necessário
+            if not incluir_creditos:
+                df = df[df['Tipo'] == 'D']
+                print(f"Após filtrar créditos: {len(df)} linhas")
+            
+            # Limpar dados
+            df = df.dropna(subset=['Descricao'])
+            df = df[df['Valor'] > 0]
+            
+            print(f"Após limpeza: {len(df)} linhas")
+            
+            # Processar datas
+            try:
+                df['Data'] = pd.to_datetime(df['Data'], format='%d/%m/%Y', errors='coerce')
+            except Exception as e:
+                print(f"Aviso: erro ao processar datas: {e}")
+                # Manter como string se não conseguir converter
+            
+            # Retornar apenas as colunas necessárias
+            colunas_resultado = ['Data', 'Descricao', 'Valor', 'Tipo', 'Documento']
+            resultado = df[colunas_resultado].reset_index(drop=True)
+            
+            print(f"Resultado final: {len(resultado)} linhas")
+            if len(resultado) > 0:
+                print(f"Amostra dos dados: {resultado.head().to_dict()}")
+            
+            return resultado
+            
+        except Exception as e:
+            print(f"Erro detalhado no processamento Bradesco: {e}")
+            print(f"Traceback: {traceback.format_exc()}")
+            raise Exception(f"Erro no processamento CSV Bradesco: {e}")
+    
+    def processar_csv_banco_brasil(self, csv_string, incluir_creditos):
+        """Processa CSV do Banco do Brasil (código original)"""
+        # Limpar caracteres problemáticos
+        csv_string = csv_string.replace('Histórico', 'Historico')
+        csv_string = csv_string.replace('Número', 'Numero')
+        
+        df = pd.read_csv(io.StringIO(csv_string))
+        
+        # Detectar formato
+        if 'Descrição' in df.columns or 'Descricao' in df.columns:
+            # Formato antigo
+            desc_col = 'Descrição' if 'Descrição' in df.columns else 'Descricao'
+            df = df.dropna(subset=[desc_col, 'Valor'])
+            df['Descricao'] = df[desc_col]
+            df['Agencia'] = df.get('Agência', df.get('Agencia', ''))
+            df['Documento'] = df.get('Documento', '')
+            
+            if not incluir_creditos:
+                df = df[df['Tipo'] == 'D']
+                
+        elif 'Historico' in df.columns:
+            # Formato novo
+            df = df.dropna(subset=['Historico', 'Valor'])
+            df = df[df['Historico'] != 'Saldo Anterior']
+            
+            df['Descricao'] = df['Historico']
+            df['Agencia'] = df.get('Dependencia Origem', '')
+            df['Documento'] = df.get('Numero do documento', '')
+            df['Tipo'] = df['Valor'].apply(lambda x: 'C' if x >= 0 else 'D')
+            df['Valor'] = df['Valor'].abs()
+            
+            if not incluir_creditos:
+                df = df[df['Tipo'] == 'D']
+        else:
+            raise Exception("Formato de CSV do Banco do Brasil não reconhecido")
+        
+        df['Valor'] = pd.to_numeric(df['Valor'], errors='coerce')
+        df = df.dropna(subset=['Valor'])
+        
+        return df
+    
+    def processar_csv(self, csv_data, incluir_creditos):
+        try:
+            print("=== INICIANDO PROCESSAMENTO CSV ===")
+            
+            # Tentar diferentes codificações
+            csv_string = None
+            encoding_usado = None
+            for encoding in ['utf-8', 'latin1', 'cp1252']:
+                try:
+                    csv_string = csv_data.decode(encoding)
+                    encoding_usado = encoding
+                    print(f"CSV decodificado com sucesso usando {encoding}")
+                    break
+                except Exception as e:
+                    print(f"Falha ao decodificar com {encoding}: {e}")
+                    continue
+            
+            if not csv_string:
+                raise Exception("Não foi possível decodificar o CSV com nenhuma codificação")
+            
+            print(f"CSV decodificado: {len(csv_string)} caracteres")
+            print(f"Primeiros 500 caracteres: {csv_string[:500]}")
+            
+            # Detectar formato
+            formato = self.detectar_formato_csv(csv_string)
+            print(f"Formato detectado: {formato}")
+            
+            if formato == 'bradesco':
+                return self.processar_csv_bradesco(csv_string, incluir_creditos)
+            elif formato == 'banco_brasil':
+                return self.processar_csv_banco_brasil(csv_string, incluir_creditos)
+            else:
+                raise Exception(f"Formato de CSV não reconhecido. Formato detectado: {formato}. Formatos suportados: Banco do Brasil e Bradesco.")
+                
+        except Exception as e:
+            print(f"Erro detalhado no processamento CSV: {e}")
+            print(f"Traceback: {traceback.format_exc()}")
+            raise Exception(f"Erro no CSV: {e}")
+    
+    def categorizar(self, descricao, categorias):
+        if not descricao or pd.isna(descricao):
+            return "Outros"
+        
+        desc_upper = str(descricao).upper()
+        
+        # Ordenar por tamanho
+        sorted_keys = sorted(categorias.keys(), key=len, reverse=True)
+        
+        for keyword in sorted_keys:
+            if keyword.upper() in desc_upper:
+                return categorias[keyword]
+        
+        return "Outros"
+    
+    def gerar_excel(self, resultados, df):
+        try:
+            wb = openpyxl.Workbook()
+            wb.remove(wb.active)
+            
+            # Aba Resumo
+            ws_resumo = wb.create_sheet("Resumo")
+            ws_resumo.append(["ANÁLISE DE EXTRATO BANCÁRIO"])
+            ws_resumo.append([f"Gerado em: {pd.Timestamp.now().strftime('%d/%m/%Y %H:%M')}"])
+            ws_resumo.append([])
+            
+            # Estatísticas gerais
+            total_transacoes = len(df)
+            total_debitos = len(df[df['Tipo'] == 'D'])
+            total_creditos = len(df[df['Tipo'] == 'C'])
+            valor_total = df['Valor'].sum()
+            
+            ws_resumo.append(["ESTATÍSTICAS GERAIS"])
+            ws_resumo.append(["Total de Transações", total_transacoes])
+            ws_resumo.append(["Total de Débitos", total_debitos])
+            ws_resumo.append(["Total de Créditos", total_creditos])
+            ws_resumo.append(["Valor Total", f"R$ {valor_total:,.2f}"])
+            ws_resumo.append([])
+            
+            # Resumo por categoria
+            ws_resumo.append(["RESUMO POR CATEGORIA"])
+            ws_resumo.append(["Categoria", "Valor Total", "Quantidade", "Percentual"])
+            
+            for resultado in resultados:
+                ws_resumo.append([
+                    resultado['categoria'],
+                    f"R$ {resultado['total']:,.2f}",
+                    resultado['quantidade'],
+                    f"{resultado['percentual']:.1f}%"
+                ])
+            
+            # Criar aba para cada categoria com itens detalhados
+            for resultado in resultados:
+                categoria = resultado['categoria']
+                
+                # Nome da aba (máximo 31 caracteres, sem caracteres especiais)
+                nome_aba = categoria.replace('/', '-').replace('\\', '-').replace('*', '-')
+                nome_aba = nome_aba.replace('?', '').replace(':', '-').replace('[', '').replace(']', '')
+                nome_aba = nome_aba[:31]  # Limite do Excel
+                
+                ws_categoria = wb.create_sheet(nome_aba)
+                
+                # Cabeçalho da categoria
+                ws_categoria.append([f"CATEGORIA: {categoria}"])
+                ws_categoria.append([f"Total: R$ {resultado['total']:,.2f}"])
+                ws_categoria.append([f"Quantidade: {resultado['quantidade']} itens"])
+                ws_categoria.append([f"Percentual: {resultado['percentual']:.1f}% do total"])
+                ws_categoria.append([])
+                
+                # Cabeçalho da tabela de itens
+                ws_categoria.append(["#", "Data", "Descrição", "Valor", "Tipo", "Documento"])
+                
+                # Itens da categoria
+                for i, item in enumerate(resultado['itens'], 1):
+                    # Formatar data
+                    if item['data']:
+                        try:
+                            if isinstance(item['data'], str):
+                                data_formatada = pd.to_datetime(item['data'], dayfirst=True).strftime('%d/%m/%Y')
+                            else:
+                                data_formatada = item['data'].strftime('%d/%m/%Y')
+                        except:
+                            data_formatada = str(item['data'])
+                    else:
+                        data_formatada = 'Sem data'
+                    
+                    # Formatar tipo
+                    tipo_formatado = "CRÉDITO" if item['tipo'] == 'C' else "DÉBITO"
+                    
+                    ws_categoria.append([
+                        i,
+                        data_formatada,
+                        item['descricao'],
+                        f"R$ {item['valor']:,.2f}",
+                        tipo_formatado,
+                        str(item['documento'])
+                    ])
+                
+                # Total da categoria
+                ws_categoria.append([])
+                ws_categoria.append(["", "", "TOTAL DA CATEGORIA:", f"R$ {resultado['total']:,.2f}", "", ""])
+                
+                # Ajustar largura das colunas
+                ws_categoria.column_dimensions['A'].width = 5
+                ws_categoria.column_dimensions['B'].width = 12
+                ws_categoria.column_dimensions['C'].width = 50
+                ws_categoria.column_dimensions['D'].width = 15
+                ws_categoria.column_dimensions['E'].width = 10
+                ws_categoria.column_dimensions['F'].width = 15
+            
+            # Ajustar largura das colunas do resumo
+            ws_resumo.column_dimensions['A'].width = 25
+            ws_resumo.column_dimensions['B'].width = 15
+            ws_resumo.column_dimensions['C'].width = 12
+            ws_resumo.column_dimensions['D'].width = 12
+            
+            # Salvar
+            excel_buffer = io.BytesIO()
+            wb.save(excel_buffer)
+            excel_buffer.seek(0)
+            
+            return base64.b64encode(excel_buffer.getvalue()).decode()
+        except Exception as e:
+            print(f"Erro ao gerar Excel: {e}")
+            return None
