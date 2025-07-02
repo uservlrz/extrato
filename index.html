@@ -12,7 +12,7 @@
         }
 
         .container {
-            max-width: 900px;
+            max-width: 1200px;
             margin: 0 auto;
             background: white;
             padding: 20px;
@@ -82,24 +82,85 @@
 
         .stats {
             display: flex;
-            gap: 20px;
+            gap: 15px;
             margin: 20px 0;
             flex-wrap: wrap;
         }
 
         .stat {
             flex: 1;
-            min-width: 150px;
+            min-width: 140px;
             padding: 15px;
             background: #e9ecef;
             text-align: center;
             border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+
+        .stat.credito {
+            background: #d4edda;
+            border-color: #28a745;
+        }
+
+        .stat.debito {
+            background: #f8d7da;
+            border-color: #dc3545;
+        }
+
+        .stat.saldo {
+            background: #fff3cd;
+            border-color: #ffc107;
         }
 
         .stat-value {
-            font-size: 24px;
+            font-size: 20px;
             font-weight: bold;
             color: #007bff;
+        }
+
+        .stat.credito .stat-value {
+            color: #28a745;
+        }
+
+        .stat.debito .stat-value {
+            color: #dc3545;
+        }
+
+        .stat.saldo .stat-value {
+            color: #856404;
+        }
+
+        .section-tabs {
+            display: flex;
+            margin: 30px 0 20px 0;
+            border-bottom: 2px solid #ddd;
+        }
+
+        .tab {
+            padding: 12px 24px;
+            background: #f8f9fa;
+            border: 1px solid #ddd;
+            border-bottom: none;
+            cursor: pointer;
+            margin-right: 2px;
+        }
+
+        .tab.active {
+            background: white;
+            border-bottom: 2px solid white;
+            font-weight: bold;
+        }
+
+        .tab:hover:not(.active) {
+            background: #e9ecef;
+        }
+
+        .section-content {
+            display: none;
+        }
+
+        .section-content.active {
+            display: block;
         }
 
         .category {
@@ -156,15 +217,7 @@
             padding: 20px;
         }
 
-        .checkbox-container {
-            margin: 15px 0;
-        }
-
-        .checkbox-container input {
-            margin-right: 8px;
-        }
-
-        @media (max-width: 600px) {
+        @media (max-width: 768px) {
             .stats {
                 flex-direction: column;
             }
@@ -172,12 +225,21 @@
             .stat {
                 min-width: auto;
             }
+
+            .section-tabs {
+                flex-direction: column;
+            }
+
+            .tab {
+                margin-right: 0;
+                margin-bottom: 2px;
+            }
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>Analisador de Extrato</h1>
+        <h1>Analisador de Extrato Completo</h1>
         
         <div class="upload-box">
             <h3>Carregar Arquivos</h3>
@@ -193,13 +255,8 @@
             </div>
         </div>
 
-        <div class="checkbox-container">
-            <input type="checkbox" id="includeCredits">
-            <label for="includeCredits">Incluir créditos (entradas) na análise</label>
-        </div>
-
         <div style="text-align: center;">
-            <button onclick="processFiles()" id="processBtn" disabled>Analisar</button>
+            <button onclick="processFiles()" id="processBtn" disabled>Analisar Completo</button>
             <button onclick="downloadResults()" id="downloadBtn" disabled>Baixar Excel</button>
             <button onclick="resetForm()">Limpar</button>
         </div>
@@ -216,24 +273,50 @@
             <div class="stats">
                 <div class="stat">
                     <div class="stat-value" id="totalTransactions">0</div>
-                    <div>Transações</div>
+                    <div>Total Transações</div>
                 </div>
-                <div class="stat">
-                    <div class="stat-value" id="totalDebits">0</div>
-                    <div>Débitos</div>
-                </div>
-                <div class="stat">
+                <div class="stat credito">
                     <div class="stat-value" id="totalCredits">0</div>
                     <div>Créditos</div>
                 </div>
-                <div class="stat">
-                    <div class="stat-value" id="totalAmount">R$ 0,00</div>
-                    <div>Total</div>
+                <div class="stat debito">
+                    <div class="stat-value" id="totalDebits">0</div>
+                    <div>Débitos</div>
+                </div>
+                <div class="stat credito">
+                    <div class="stat-value" id="totalCreditAmount">R$ 0,00</div>
+                    <div>Total Entradas</div>
+                </div>
+                <div class="stat debito">
+                    <div class="stat-value" id="totalDebitAmount">R$ 0,00</div>
+                    <div>Total Saídas</div>
+                </div>
+                <div class="stat saldo">
+                    <div class="stat-value" id="saldoAmount">R$ 0,00</div>
+                    <div>Saldo</div>
                 </div>
             </div>
 
-            <h3>Categorias</h3>
-            <div id="categoryList"></div>
+            <div class="section-tabs">
+                <div class="tab active" onclick="showSection('geral')">Análise Geral</div>
+                <div class="tab" onclick="showSection('creditos')">Créditos (Entradas)</div>
+                <div class="tab" onclick="showSection('debitos')">Débitos (Saídas)</div>
+            </div>
+
+            <div id="section-geral" class="section-content active">
+                <h3>Categorias - Análise Geral</h3>
+                <div id="categoryListGeral"></div>
+            </div>
+
+            <div id="section-creditos" class="section-content">
+                <h3>Categorias - Créditos (Entradas)</h3>
+                <div id="categoryListCreditos"></div>
+            </div>
+
+            <div id="section-debitos" class="section-content">
+                <h3>Categorias - Débitos (Saídas)</h3>
+                <div id="categoryListDebitos"></div>
+            </div>
         </div>
     </div>
 
@@ -285,7 +368,6 @@
             const formData = new FormData();
             formData.append('csv_file', csvFile);
             formData.append('excel_file', excelFile);
-            formData.append('incluir_creditos', document.getElementById('includeCredits').checked);
 
             try {
                 const response = await fetch('/api', {
@@ -320,7 +402,7 @@
 
         function displayResults(data) {
             processedResults = {
-                results: data.categorias.map(cat => ({
+                geral: data.categorias_gerais.map(cat => ({
                     category: cat.categoria,
                     total: cat.total,
                     count: cat.quantidade,
@@ -332,28 +414,68 @@
                         tipo: item.tipo
                     }))
                 })),
-                totalAmount: data.estatisticas.valor_total,
-                totalTransactions: data.estatisticas.total_transacoes,
-                totalDebits: data.estatisticas.total_debitos,
-                totalCredits: data.estatisticas.total_creditos,
+                creditos: data.categorias_creditos.map(cat => ({
+                    category: cat.categoria,
+                    total: cat.total,
+                    count: cat.quantidade,
+                    percentage: cat.percentual,
+                    items: cat.itens.map(item => ({
+                        description: item.descricao,
+                        value: item.valor,
+                        date: item.data,
+                        tipo: item.tipo
+                    }))
+                })),
+                debitos: data.categorias_debitos.map(cat => ({
+                    category: cat.categoria,
+                    total: cat.total,
+                    count: cat.quantidade,
+                    percentage: cat.percentual,
+                    items: cat.itens.map(item => ({
+                        description: item.descricao,
+                        value: item.valor,
+                        date: item.data,
+                        tipo: item.tipo
+                    }))
+                })),
+                estatisticas: data.estatisticas,
                 excelFile: data.excel_file
             };
 
-            document.getElementById('totalTransactions').textContent = processedResults.totalTransactions;
-            document.getElementById('totalDebits').textContent = processedResults.totalDebits;
-            document.getElementById('totalCredits').textContent = processedResults.totalCredits;
-            document.getElementById('totalAmount').textContent = formatCurrency(processedResults.totalAmount);
+            // Atualizar estatísticas
+            document.getElementById('totalTransactions').textContent = data.estatisticas.total_transacoes;
+            document.getElementById('totalDebits').textContent = data.estatisticas.total_debitos;
+            document.getElementById('totalCredits').textContent = data.estatisticas.total_creditos;
+            document.getElementById('totalCreditAmount').textContent = formatCurrency(data.estatisticas.valor_total_creditos);
+            document.getElementById('totalDebitAmount').textContent = formatCurrency(data.estatisticas.valor_total_debitos);
+            
+            // Calcular e mostrar saldo
+            const saldo = data.estatisticas.valor_total_creditos - data.estatisticas.valor_total_debitos;
+            document.getElementById('saldoAmount').textContent = formatCurrency(saldo);
 
-            const listDiv = document.getElementById('categoryList');
+            // Mostrar categorias em cada seção
+            displayCategories('categoryListGeral', processedResults.geral, 'geral');
+            displayCategories('categoryListCreditos', processedResults.creditos, 'creditos');
+            displayCategories('categoryListDebitos', processedResults.debitos, 'debitos');
+
+            document.getElementById('results').style.display = 'block';
+            
+            if (processedResults.excelFile) {
+                document.getElementById('downloadBtn').disabled = false;
+            }
+        }
+
+        function displayCategories(containerId, categories, section) {
+            const listDiv = document.getElementById(containerId);
             listDiv.innerHTML = '';
             
-            processedResults.results.forEach((item, index) => {
+            categories.forEach((item, index) => {
                 const categoryDiv = document.createElement('div');
                 categoryDiv.className = 'category';
                 
                 const headerDiv = document.createElement('div');
                 headerDiv.className = 'category-header';
-                headerDiv.onclick = () => toggleCategoryItems(index);
+                headerDiv.onclick = () => toggleCategoryItems(section, index);
                 headerDiv.innerHTML = `
                     <div>
                         <strong>${item.category}</strong><br>
@@ -366,7 +488,7 @@
                 
                 const itemsDiv = document.createElement('div');
                 itemsDiv.className = 'category-items';
-                itemsDiv.id = `items-${index}`;
+                itemsDiv.id = `items-${section}-${index}`;
                 
                 if (item.items && item.items.length > 0) {
                     item.items.forEach((categoryItem, itemIndex) => {
@@ -404,16 +526,20 @@
                 categoryDiv.appendChild(itemsDiv);
                 listDiv.appendChild(categoryDiv);
             });
-
-            document.getElementById('results').style.display = 'block';
-            
-            if (processedResults.excelFile) {
-                document.getElementById('downloadBtn').disabled = false;
-            }
         }
 
-        function toggleCategoryItems(index) {
-            const itemsDiv = document.getElementById(`items-${index}`);
+        function showSection(section) {
+            // Remover active de todas as tabs e sections
+            document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
+            document.querySelectorAll('.section-content').forEach(content => content.classList.remove('active'));
+            
+            // Ativar tab e section selecionadas
+            event.target.classList.add('active');
+            document.getElementById(`section-${section}`).classList.add('active');
+        }
+
+        function toggleCategoryItems(section, index) {
+            const itemsDiv = document.getElementById(`items-${section}-${index}`);
             itemsDiv.classList.toggle('show');
         }
 
@@ -443,7 +569,7 @@
                 const dateStr = today.getDate().toString().padStart(2, '0') + '-' + 
                              (today.getMonth() + 1).toString().padStart(2, '0') + '-' + 
                              today.getFullYear();
-                const filename = `Analise_Extrato_${dateStr}.xlsx`;
+                const filename = `Analise_Completa_${dateStr}.xlsx`;
                 
                 const binaryString = atob(processedResults.excelFile);
                 const bytes = new Uint8Array(binaryString.length);
@@ -476,11 +602,13 @@
             document.getElementById('excelFile').value = '';
             document.getElementById('csvStatus').innerHTML = '';
             document.getElementById('excelStatus').innerHTML = '';
-            document.getElementById('includeCredits').checked = false;
             document.getElementById('processBtn').disabled = true;
             document.getElementById('downloadBtn').disabled = true;
             document.getElementById('results').style.display = 'none';
             document.getElementById('processingStatus').innerHTML = '';
+            
+            // Resetar para tab geral
+            showSection('geral');
         }
     </script>
 </body>

@@ -45,23 +45,23 @@ class handler(BaseHTTPRequestHandler):
             
             csv_data = files.get('csv_file')
             excel_data = files.get('excel_file')
-            incluir_creditos = form_data.get('incluir_creditos', 'false') == 'true'
+            # REMOVIDO: incluir_creditos - sempre processar tudo
             
             if not csv_data or not excel_data:
                 raise Exception("Arquivos necessários não foram enviados")
             
             print(f"CSV: {len(csv_data)} bytes")
             print(f"Excel: {len(excel_data)} bytes")
-            print(f"Incluir créditos: {incluir_creditos}")
+            print("Processando todas as transações (créditos + débitos)")
             
             # Processar Excel
             print("Processando Excel...")
             categorias = self.processar_excel(excel_data)
             print(f"Categorias encontradas: {len(categorias)}")
             
-            # Processar CSV (agora detecta automaticamente o formato)
+            # Processar CSV - SEMPRE incluir tudo
             print("Processando CSV...")
-            df = self.processar_csv(csv_data, incluir_creditos)
+            df = self.processar_csv(csv_data, incluir_creditos=True)  # Sempre True
             print(f"Linhas processadas: {len(df)}")
             print(f"Colunas: {list(df.columns)}")
             
@@ -69,67 +69,117 @@ class handler(BaseHTTPRequestHandler):
             print("Categorizando transações...")
             df['Categoria'] = df['Descricao'].apply(lambda x: self.categorizar(x, categorias))
             
-            # Agrupar resultados
-            print("Agrupando resultados...")
-            resultados = df.groupby('Categoria').agg({
+            # Separar créditos e débitos para análise
+            df_creditos = df[df['Tipo'] == 'C'].copy()
+            df_debitos = df[df['Tipo'] == 'D'].copy()
+            
+            print(f"Créditos: {len(df_creditos)} transações")
+            print(f"Débitos: {len(df_debitos)} transações")
+            
+            # Agrupar resultados GERAIS (tudo junto)
+            print("Agrupando resultados gerais...")
+            resultados_gerais = df.groupby('Categoria').agg({
                 'Valor': ['sum', 'count']
             }).reset_index()
-            
-            resultados.columns = ['categoria', 'total', 'quantidade']
+            resultados_gerais.columns = ['categoria', 'total', 'quantidade']
             valor_total = df['Valor'].sum()
             
             if valor_total > 0:
-                resultados['percentual'] = (resultados['total'] / valor_total) * 100
+                resultados_gerais['percentual'] = (resultados_gerais['total'] / valor_total) * 100
             else:
-                resultados['percentual'] = 0
+                resultados_gerais['percentual'] = 0
+            resultados_gerais = resultados_gerais.sort_values('total', ascending=False)
             
-            resultados = resultados.sort_values('total', ascending=False)
-            
-            # Preparar resposta
-            print("Preparando resposta...")
-            categorias_detalhadas = []
-            for _, row in resultados.iterrows():
-                categoria = row['categoria']
-                itens_cat = df[df['Categoria'] == categoria]
+            # Agrupar resultados CRÉDITOS
+            print("Agrupando resultados de créditos...")
+            if len(df_creditos) > 0:
+                resultados_creditos = df_creditos.groupby('Categoria').agg({
+                    'Valor': ['sum', 'count']
+                }).reset_index()
+                resultados_creditos.columns = ['categoria', 'total', 'quantidade']
+                valor_total_creditos = df_creditos['Valor'].sum()
                 
-                itens = []
-                for _, item in itens_cat.iterrows():
-                    # Tratar valores None/NaN na data
-                    data_valor = item['Data']
-                    if pd.isna(data_valor):
-                        data_formatada = None
-                    else:
-                        data_formatada = str(data_valor)
+                if valor_total_creditos > 0:
+                    resultados_creditos['percentual'] = (resultados_creditos['total'] / valor_total_creditos) * 100
+                else:
+                    resultados_creditos['percentual'] = 0
+                resultados_creditos = resultados_creditos.sort_values('total', ascending=False)
+            else:
+                resultados_creditos = pd.DataFrame(columns=['categoria', 'total', 'quantidade', 'percentual'])
+            
+            # Agrupar resultados DÉBITOS
+            print("Agrupando resultados de débitos...")
+            if len(df_debitos) > 0:
+                resultados_debitos = df_debitos.groupby('Categoria').agg({
+                    'Valor': ['sum', 'count']
+                }).reset_index()
+                resultados_debitos.columns = ['categoria', 'total', 'quantidade']
+                valor_total_debitos = df_debitos['Valor'].sum()
+                
+                if valor_total_debitos > 0:
+                    resultados_debitos['percentual'] = (resultados_debitos['total'] / valor_total_debitos) * 100
+                else:
+                    resultados_debitos['percentual'] = 0
+                resultados_debitos = resultados_debitos.sort_values('total', ascending=False)
+            else:
+                resultados_debitos = pd.DataFrame(columns=['categoria', 'total', 'quantidade', 'percentual'])
+            
+            # Função para preparar categorias detalhadas
+            def preparar_categorias_detalhadas(resultados, dataframe):
+                categorias_detalhadas = []
+                for _, row in resultados.iterrows():
+                    categoria = row['categoria']
+                    itens_cat = dataframe[dataframe['Categoria'] == categoria]
                     
-                    itens.append({
-                        'data': data_formatada,
-                        'descricao': str(item['Descricao']),
-                        'valor': float(item['Valor']),
-                        'tipo': str(item['Tipo']),
-                        'documento': str(item.get('Documento', ''))
+                    itens = []
+                    for _, item in itens_cat.iterrows():
+                        # Tratar valores None/NaN na data
+                        data_valor = item['Data']
+                        if pd.isna(data_valor):
+                            data_formatada = None
+                        else:
+                            data_formatada = str(data_valor)
+                        
+                        itens.append({
+                            'data': data_formatada,
+                            'descricao': str(item['Descricao']),
+                            'valor': float(item['Valor']),
+                            'tipo': str(item['Tipo']),
+                            'documento': str(item.get('Documento', ''))
+                        })
+                    
+                    categorias_detalhadas.append({
+                        'categoria': categoria,
+                        'total': float(row['total']),
+                        'quantidade': int(row['quantidade']),
+                        'percentual': float(row['percentual']),
+                        'itens': itens
                     })
-                
-                categorias_detalhadas.append({
-                    'categoria': categoria,
-                    'total': float(row['total']),
-                    'quantidade': int(row['quantidade']),
-                    'percentual': float(row['percentual']),
-                    'itens': itens
-                })
+                return categorias_detalhadas
+            
+            # Preparar respostas
+            print("Preparando respostas...")
+            categorias_gerais = preparar_categorias_detalhadas(resultados_gerais, df)
+            categorias_creditos = preparar_categorias_detalhadas(resultados_creditos, df_creditos)
+            categorias_debitos = preparar_categorias_detalhadas(resultados_debitos, df_debitos)
             
             # Gerar Excel
             print("Gerando Excel...")
-            excel_b64 = self.gerar_excel(categorias_detalhadas, df)
+            excel_b64 = self.gerar_excel_completo(categorias_gerais, categorias_creditos, categorias_debitos, df, df_creditos, df_debitos)
             
             resposta = {
                 'success': True,
                 'estatisticas': {
                     'total_transacoes': len(df),
-                    'total_debitos': len(df[df['Tipo'] == 'D']),
-                    'total_creditos': len(df[df['Tipo'] == 'C']),
-                    'valor_total': float(valor_total)
+                    'total_debitos': len(df_debitos),
+                    'total_creditos': len(df_creditos),
+                    'valor_total': float(valor_total),
+                    'valor_total_creditos': float(df_creditos['Valor'].sum() if len(df_creditos) > 0 else 0),
+                    'valor_total_debitos': float(df_debitos['Valor'].sum() if len(df_debitos) > 0 else 0)
                 },
-                'categorias': categorias_detalhadas,
+                'categorias_gerais': categorias_gerais,
+                'categorias_creditos': categorias_creditos,
+                'categorias_debitos': categorias_debitos,
                 'excel_file': excel_b64
             }
             
@@ -461,20 +511,13 @@ class handler(BaseHTTPRequestHandler):
                 print(f"Range de valores: {df['Valor'].min()} até {df['Valor'].max()}")
                 print(f"Alguns valores de exemplo: {df['Valor'].head(10).tolist()}")
             
-            # Filtrar créditos se necessário
-            if not incluir_creditos:
-                # Se NÃO incluir créditos, mostrar APENAS débitos
-                df_antes = len(df)
-                df = df[df['Tipo'] == 'D']
-                print(f"Após filtrar créditos (apenas débitos): {len(df)} linhas (eram {df_antes})")
-            else:
-                # Se incluir créditos, mostrar TUDO (créditos + débitos)
-                print(f"Incluindo créditos: mantendo todas as {len(df)} linhas (créditos + débitos)")
+            # SEMPRE mostrar TUDO - não aplicar filtro de créditos
+            print(f"Mantendo todas as {len(df)} linhas (créditos + débitos)")
                 
             # Debug: mostrar valores após filtro
             if len(df) > 0:
-                print(f"Valores após filtro: {df['Valor'].head(10).tolist()}")
-                print(f"Tipos após filtro - Créditos: {(df['Tipo'] == 'C').sum()}, Débitos: {(df['Tipo'] == 'D').sum()}")
+                print(f"Valores: {df['Valor'].head(10).tolist()}")
+                print(f"Tipos finais - Créditos: {(df['Tipo'] == 'C').sum()}, Débitos: {(df['Tipo'] == 'D').sum()}")
             
             # Limpar dados - CORRIGIDO
             df = df.dropna(subset=['Descricao'])
@@ -522,7 +565,7 @@ class handler(BaseHTTPRequestHandler):
             raise Exception(f"Erro no processamento CSV Bradesco: {e}")
     
     def processar_csv_banco_brasil(self, csv_string, incluir_creditos):
-        """Processa CSV do Banco do Brasil (código original)"""
+        """Processa CSV do Banco do Brasil - SEMPRE retorna tudo"""
         # Limpar caracteres problemáticos
         csv_string = csv_string.replace('Histórico', 'Historico')
         csv_string = csv_string.replace('Número', 'Numero')
@@ -537,11 +580,7 @@ class handler(BaseHTTPRequestHandler):
             df['Descricao'] = df[desc_col]
             df['Agencia'] = df.get('Agência', df.get('Agencia', ''))
             df['Documento'] = df.get('Documento', '')
-            
-            # Aplicar filtro de créditos
-            if not incluir_creditos:
-                df = df[df['Tipo'] == 'D']  # Apenas débitos
-            # Se incluir_creditos = True, manter tudo (não filtrar)
+            # NÃO aplicar filtro - manter tudo
                 
         elif 'Historico' in df.columns:
             # Formato novo
@@ -553,11 +592,7 @@ class handler(BaseHTTPRequestHandler):
             df['Documento'] = df.get('Numero do documento', '')
             df['Tipo'] = df['Valor'].apply(lambda x: 'C' if x >= 0 else 'D')
             df['Valor'] = df['Valor'].abs()
-            
-            # Aplicar filtro de créditos
-            if not incluir_creditos:
-                df = df[df['Tipo'] == 'D']  # Apenas débitos
-            # Se incluir_creditos = True, manter tudo (não filtrar)
+            # NÃO aplicar filtro - manter tudo
         else:
             raise Exception("Formato de CSV do Banco do Brasil não reconhecido")
         
@@ -623,35 +658,40 @@ class handler(BaseHTTPRequestHandler):
         
         return "Outros"
     
-    def gerar_excel(self, resultados, df):
+    def gerar_excel_completo(self, categorias_gerais, categorias_creditos, categorias_debitos, df_geral, df_creditos, df_debitos):
         try:
             wb = openpyxl.Workbook()
             wb.remove(wb.active)
             
-            # Aba Resumo
-            ws_resumo = wb.create_sheet("Resumo")
-            ws_resumo.append(["ANÁLISE DE EXTRATO BANCÁRIO"])
+            # === ABA RESUMO GERAL ===
+            ws_resumo = wb.create_sheet("Resumo Geral")
+            ws_resumo.append(["ANÁLISE COMPLETA DE EXTRATO BANCÁRIO"])
             ws_resumo.append([f"Gerado em: {pd.Timestamp.now().strftime('%d/%m/%Y %H:%M')}"])
             ws_resumo.append([])
             
             # Estatísticas gerais
-            total_transacoes = len(df)
-            total_debitos = len(df[df['Tipo'] == 'D'])
-            total_creditos = len(df[df['Tipo'] == 'C'])
-            valor_total = df['Valor'].sum()
+            total_transacoes = len(df_geral)
+            total_debitos = len(df_debitos)
+            total_creditos = len(df_creditos)
+            valor_total = df_geral['Valor'].sum()
+            valor_creditos = df_creditos['Valor'].sum() if len(df_creditos) > 0 else 0
+            valor_debitos = df_debitos['Valor'].sum() if len(df_debitos) > 0 else 0
             
             ws_resumo.append(["ESTATÍSTICAS GERAIS"])
             ws_resumo.append(["Total de Transações", total_transacoes])
-            ws_resumo.append(["Total de Débitos", total_debitos])
             ws_resumo.append(["Total de Créditos", total_creditos])
-            ws_resumo.append(["Valor Total", f"R$ {valor_total:,.2f}"])
+            ws_resumo.append(["Total de Débitos", total_debitos])
+            ws_resumo.append(["Valor Total Geral", f"R$ {valor_total:,.2f}"])
+            ws_resumo.append(["Valor Total Créditos", f"R$ {valor_creditos:,.2f}"])
+            ws_resumo.append(["Valor Total Débitos", f"R$ {valor_debitos:,.2f}"])
+            ws_resumo.append(["Saldo (Créditos - Débitos)", f"R$ {(valor_creditos - valor_debitos):,.2f}"])
             ws_resumo.append([])
             
-            # Resumo por categoria
-            ws_resumo.append(["RESUMO POR CATEGORIA"])
+            # Resumo por categoria - GERAL
+            ws_resumo.append(["RESUMO GERAL POR CATEGORIA"])
             ws_resumo.append(["Categoria", "Valor Total", "Quantidade", "Percentual"])
             
-            for resultado in resultados:
+            for resultado in categorias_gerais:
                 ws_resumo.append([
                     resultado['categoria'],
                     f"R$ {resultado['total']:,.2f}",
@@ -659,12 +699,52 @@ class handler(BaseHTTPRequestHandler):
                     f"{resultado['percentual']:.1f}%"
                 ])
             
-            # Criar aba para cada categoria com itens detalhados
-            for resultado in resultados:
+            # === ABA RESUMO CRÉDITOS ===
+            if len(categorias_creditos) > 0:
+                ws_creditos = wb.create_sheet("Resumo Créditos")
+                ws_creditos.append(["ANÁLISE DE CRÉDITOS (ENTRADAS)"])
+                ws_creditos.append([f"Total de Créditos: {total_creditos} transações"])
+                ws_creditos.append([f"Valor Total: R$ {valor_creditos:,.2f}"])
+                ws_creditos.append([])
+                
+                ws_creditos.append(["CRÉDITOS POR CATEGORIA"])
+                ws_creditos.append(["Categoria", "Valor Total", "Quantidade", "Percentual"])
+                
+                for resultado in categorias_creditos:
+                    ws_creditos.append([
+                        resultado['categoria'],
+                        f"R$ {resultado['total']:,.2f}",
+                        resultado['quantidade'],
+                        f"{resultado['percentual']:.1f}%"
+                    ])
+            
+            # === ABA RESUMO DÉBITOS ===
+            if len(categorias_debitos) > 0:
+                ws_debitos = wb.create_sheet("Resumo Débitos")
+                ws_debitos.append(["ANÁLISE DE DÉBITOS (SAÍDAS)"])
+                ws_debitos.append([f"Total de Débitos: {total_debitos} transações"])
+                ws_debitos.append([f"Valor Total: R$ {valor_debitos:,.2f}"])
+                ws_debitos.append([])
+                
+                ws_debitos.append(["DÉBITOS POR CATEGORIA"])
+                ws_debitos.append(["Categoria", "Valor Total", "Quantidade", "Percentual"])
+                
+                for resultado in categorias_debitos:
+                    ws_debitos.append([
+                        resultado['categoria'],
+                        f"R$ {resultado['total']:,.2f}",
+                        resultado['quantidade'],
+                        f"{resultado['percentual']:.1f}%"
+                    ])
+            
+            # === ABAS DETALHADAS POR CATEGORIA ===
+            
+            # Função para criar aba detalhada
+            def criar_aba_categoria(resultado, prefixo=""):
                 categoria = resultado['categoria']
                 
                 # Nome da aba (máximo 31 caracteres, sem caracteres especiais)
-                nome_aba = categoria.replace('/', '-').replace('\\', '-').replace('*', '-')
+                nome_aba = f"{prefixo}{categoria}".replace('/', '-').replace('\\', '-').replace('*', '-')
                 nome_aba = nome_aba.replace('?', '').replace(':', '-').replace('[', '').replace(']', '')
                 nome_aba = nome_aba[:31]  # Limite do Excel
                 
@@ -718,11 +798,36 @@ class handler(BaseHTTPRequestHandler):
                 ws_categoria.column_dimensions['E'].width = 10
                 ws_categoria.column_dimensions['F'].width = 15
             
-            # Ajustar largura das colunas do resumo
-            ws_resumo.column_dimensions['A'].width = 25
-            ws_resumo.column_dimensions['B'].width = 15
-            ws_resumo.column_dimensions['C'].width = 12
-            ws_resumo.column_dimensions['D'].width = 12
+            # Criar abas para categorias gerais (principais)
+            for resultado in categorias_gerais:
+                criar_aba_categoria(resultado)
+            
+            # Criar abas para créditos (se houver)
+            for resultado in categorias_creditos:
+                criar_aba_categoria(resultado, "C_")
+            
+            # Criar abas para débitos (se houver)
+            for resultado in categorias_debitos:
+                criar_aba_categoria(resultado, "D_")
+            
+            # Ajustar largura das colunas dos resumos
+            for ws in [ws_resumo]:
+                ws.column_dimensions['A'].width = 25
+                ws.column_dimensions['B'].width = 15
+                ws.column_dimensions['C'].width = 12
+                ws.column_dimensions['D'].width = 12
+            
+            if len(categorias_creditos) > 0:
+                ws_creditos.column_dimensions['A'].width = 25
+                ws_creditos.column_dimensions['B'].width = 15
+                ws_creditos.column_dimensions['C'].width = 12
+                ws_creditos.column_dimensions['D'].width = 12
+            
+            if len(categorias_debitos) > 0:
+                ws_debitos.column_dimensions['A'].width = 25
+                ws_debitos.column_dimensions['B'].width = 15
+                ws_debitos.column_dimensions['C'].width = 12
+                ws_debitos.column_dimensions['D'].width = 12
             
             # Salvar
             excel_buffer = io.BytesIO()
