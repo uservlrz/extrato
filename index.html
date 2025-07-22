@@ -838,8 +838,9 @@
             const formData = new FormData();
             formData.append('procedures_file', medicationFile);
             formData.append('categories_file', categoriesFile);
+            formData.append('action', 'procedures'); // Adicionar flag
 
-            console.log("📤 Enviando para: /api/procedures");
+            console.log("📤 Enviando para: /api (com action=procedures)");
             console.log("📁 Arquivos:", medicationFile.name, categoriesFile.name);
 
             try {
