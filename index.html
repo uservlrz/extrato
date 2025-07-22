@@ -843,7 +843,7 @@
             console.log("📁 Arquivos:", medicationFile.name, categoriesFile.name);
 
             try {
-                const response = await fetch('/api/procedures', {
+                const response = await fetch('/api', { // Usar endpoint existente
                     method: 'POST',
                     body: formData
                 });
