@@ -415,6 +415,10 @@
                     <input type="file" id="categoriesFile" accept=".xlsx,.xls" onchange="handleCategoriesFileSelect(event)">
                     <div id="categoriesFileStatus"></div>
                 </div>
+                <p style="font-size: 12px; color: #666; margin-top: 10px;">
+                    O arquivo de procedimentos deve conter: Unidade, Procedimento, Total do Item<br>
+                    O arquivo de categorias deve conter a lista de categorias para classificação
+                </p>
             </div>
 
             <div style="text-align: center;">
@@ -812,6 +816,8 @@
         }
 
         async function processMedicationFile() {
+            console.log("🔄 Iniciando processamento...");
+            
             if (!medicationFile || !categoriesFile) {
                 showMedicationError('Carregue ambos os arquivos primeiro.');
                 return;
@@ -824,17 +830,26 @@
             formData.append('procedures_file', medicationFile);
             formData.append('categories_file', categoriesFile);
 
+            console.log("📤 Enviando para: /api/procedures");
+            console.log("📁 Arquivos:", medicationFile.name, categoriesFile.name);
+
             try {
                 const response = await fetch('/api/procedures', {
                     method: 'POST',
                     body: formData
                 });
 
+                console.log("📥 Response status:", response.status);
+                console.log("📥 Response ok:", response.ok);
+
                 if (!response.ok) {
+                    const errorText = await response.text();
+                    console.error("❌ Erro da resposta:", errorText);
                     throw new Error(`Erro ${response.status}: ${response.statusText}`);
                 }
 
                 const data = await response.json();
+                console.log("✅ Dados recebidos:", data);
                 
                 if (data.success) {
                     updateMedicationProcessingStatus('Dados processados com sucesso!', 'success');
@@ -844,6 +859,7 @@
                 }
 
             } catch (error) {
+                console.error("💥 Erro completo:", error);
                 updateMedicationProcessingStatus(`Erro: ${error.message}`, 'error');
             } finally {
                 showMedicationLoading(false);
