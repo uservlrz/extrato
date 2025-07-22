@@ -24,82 +24,35 @@ class handler(BaseHTTPRequestHandler):
         response = {'status': 'OK', 'message': 'API funcionando!'}
         self.wfile.write(json.dumps(response).encode())
     
-def do_POST(self):
-    try:
-        # Verificar se é endpoint de procedimentos
-        if self.path == '/api/procedures':
-            return self.processar_procedimentos()
-        
-        print("=== INICIANDO PROCESSAMENTO ===")
-        
-        content_length = int(self.headers.get('Content-Length', 0))
-        post_data = self.rfile.read(content_length)
-        print(f"Dados recebidos: {len(post_data)} bytes")
-        
-        content_type = self.headers.get('Content-Type', '')
-        if 'boundary=' not in content_type:
-            raise Exception("Content-Type inválido - boundary não encontrado")
-        
-        boundary = content_type.split('boundary=')[1]
-        print(f"Boundary: {boundary}")
-        
-        files, form_data = self.parse_multipart(post_data, boundary)
-        print(f"Arquivos encontrados: {list(files.keys())}")
-        print(f"Dados do formulário: {list(form_data.keys())}")
-        
-        # DETECÇÃO INTELIGENTE: Verificar qual tipo de arquivo foi enviado
-        has_procedures = 'procedures_file' in files and 'categories_file' in files
-        has_extratos = 'csv_file' in files and 'excel_file' in files
-        action_procedures = form_data.get('action') == 'procedures'
-        
-        # PROCESSAMENTO DE PROCEDIMENTOS
-        if has_procedures or action_procedures:
-            print("=== DETECTADO: PROCEDIMENTOS ===")
-            procedures_data = files.get('procedures_file')
-            categories_data = files.get('categories_file')
+    def do_POST(self):
+        try:
+            # Verificar se é endpoint de procedimentos
+            if self.path == '/api/procedures':
+                return self.processar_procedimentos()
             
-            if not procedures_data or not categories_data:
-                raise Exception("Arquivos de procedimentos necessários não foram enviados")
+            # Código original para extratos
+            print("=== INICIANDO PROCESSAMENTO EXTRATOS ===")
             
-            print(f"Arquivo de procedimentos: {len(procedures_data)} bytes")
-            print(f"Arquivo de categorias: {len(categories_data)} bytes")
+            content_length = int(self.headers.get('Content-Length', 0))
+            post_data = self.rfile.read(content_length)
+            print(f"Dados recebidos: {len(post_data)} bytes")
             
-            # Processar arquivos
-            categorias = self.processar_arquivo_categorias(categories_data)
-            df_procedimentos = self.processar_arquivo_procedimentos(procedures_data)
+            content_type = self.headers.get('Content-Type', '')
+            if 'boundary=' not in content_type:
+                raise Exception("Content-Type inválido - boundary não encontrado")
             
-            # Analisar procedimentos
-            analise = self.analisar_procedimentos_medicos(df_procedimentos, categorias)
+            boundary = content_type.split('boundary=')[1]
+            print(f"Boundary: {boundary}")
             
-            # Gerar Excel
-            excel_b64 = self.gerar_excel_procedimentos(analise, df_procedimentos)
-            
-            resposta = {
-                'success': True,
-                'estatisticas': analise['estatisticas'],
-                'categorias': analise['categorias'],
-                'procedimentos': analise['procedimentos'],
-                'unidades': analise['unidades'],
-                'excel_file': excel_b64
-            }
-            
-            print("=== PROCEDIMENTOS PROCESSADOS COM SUCESSO ===")
-            self.send_response(200)
-            self.send_header('Content-Type', 'application/json')
-            self.send_header('Access-Control-Allow-Origin', '*')
-            self.end_headers()
-            self.wfile.write(json.dumps(resposta).encode())
-            return
-        
-        # PROCESSAMENTO DE EXTRATOS
-        elif has_extratos:
-            print("=== DETECTADO: EXTRATOS ===")
+            files, form_data = self.parse_multipart(post_data, boundary)
+            print(f"Arquivos encontrados: {list(files.keys())}")
+            print(f"Dados do formulário: {list(form_data.keys())}")
             
             csv_data = files.get('csv_file')
             excel_data = files.get('excel_file')
             
             if not csv_data or not excel_data:
-                raise Exception("Arquivos de extratos necessários não foram enviados")
+                raise Exception("Arquivos necessários não foram enviados")
             
             print(f"CSV: {len(csv_data)} bytes")
             print(f"Excel: {len(excel_data)} bytes")
@@ -234,33 +187,29 @@ def do_POST(self):
                 'excel_file': excel_b64
             }
             
-            print("=== EXTRATOS PROCESSADOS COM SUCESSO ===")
+            print("Enviando resposta...")
             self.send_response(200)
             self.send_header('Content-Type', 'application/json')
             self.send_header('Access-Control-Allow-Origin', '*')
             self.end_headers()
             self.wfile.write(json.dumps(resposta).encode())
-            return
-        
-        else:
-            # Nenhum tipo de arquivo reconhecido
-            raise Exception("Tipo de arquivo não reconhecido. Envie arquivos de extratos (csv_file + excel_file) ou procedimentos (procedures_file + categories_file)")
-        
-    except Exception as e:
-        print(f"ERRO: {str(e)}")
-        print(f"Traceback: {traceback.format_exc()}")
-        
-        self.send_response(500)
-        self.send_header('Content-Type', 'application/json')
-        self.send_header('Access-Control-Allow-Origin', '*')
-        self.end_headers()
-        
-        error_response = {
-            'success': False, 
-            'error': str(e),
-            'traceback': traceback.format_exc()
-        }
-        self.wfile.write(json.dumps(error_response).encode())
+            print("=== PROCESSAMENTO CONCLUÍDO ===")
+            
+        except Exception as e:
+            print(f"ERRO: {str(e)}")
+            print(f"Traceback: {traceback.format_exc()}")
+            
+            self.send_response(500)
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.end_headers()
+            
+            error_response = {
+                'success': False, 
+                'error': str(e),
+                'traceback': traceback.format_exc()
+            }
+            self.wfile.write(json.dumps(error_response).encode())
     
     def processar_procedimentos(self):
         """Processa dados de procedimentos médicos"""
