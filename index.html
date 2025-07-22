@@ -3,12 +3,54 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Analisador de Extrato</title>
+    <title>Analisador Completo</title>
     <style>
         body {
             font-family: Arial, sans-serif;
-            margin: 20px;
+            margin: 0;
             background: #f5f5f5;
+        }
+
+        .main-tabs {
+            display: flex;
+            justify-content: center;
+            padding: 20px;
+            background: #f8f9fa;
+            gap: 10px;
+        }
+
+        .main-tab {
+            padding: 12px 24px;
+            background: #6c757d;
+            color: white;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 500;
+            border: none;
+            border-radius: 8px;
+            transition: all 0.3s ease;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .main-tab:hover {
+            background: #5a6268;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+        }
+
+        .main-tab.active {
+            background: #007bff;
+            color: white;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,123,255,0.3);
+        }
+
+        .main-content {
+            display: none;
+        }
+
+        .main-content.active {
+            display: block;
         }
 
         .container {
@@ -16,12 +58,13 @@
             margin: 0 auto;
             background: white;
             padding: 20px;
-            border: 1px solid #ccc;
+            min-height: calc(100vh - 80px);
         }
 
         h1 {
             text-align: center;
             color: #333;
+            margin-bottom: 30px;
         }
 
         .upload-box {
@@ -30,6 +73,7 @@
             margin: 20px 0;
             text-align: center;
             background: #fafafa;
+            border-radius: 8px;
         }
 
         input[type="file"] {
@@ -45,6 +89,7 @@
             margin: 5px;
             cursor: pointer;
             border-radius: 4px;
+            font-size: 14px;
         }
 
         button:disabled {
@@ -61,6 +106,7 @@
             margin: 10px 0;
             border-left: 4px solid #007bff;
             background: #e7f3ff;
+            border-radius: 4px;
         }
 
         .error {
@@ -112,6 +158,11 @@
             border-color: #ffc107;
         }
 
+        .stat.medicacao {
+            background: #e1ecf4;
+            border-color: #007bff;
+        }
+
         .stat-value {
             font-size: 20px;
             font-weight: bold;
@@ -130,6 +181,10 @@
             color: #856404;
         }
 
+        .stat.medicacao .stat-value {
+            color: #007bff;
+        }
+
         .section-tabs {
             display: flex;
             margin: 30px 0 20px 0;
@@ -143,6 +198,7 @@
             border-bottom: none;
             cursor: pointer;
             margin-right: 2px;
+            border-radius: 4px 4px 0 0;
         }
 
         .tab.active {
@@ -167,6 +223,8 @@
             border: 1px solid #ddd;
             margin: 10px 0;
             background: white;
+            border-radius: 6px;
+            overflow: hidden;
         }
 
         .category-header {
@@ -218,6 +276,18 @@
         }
 
         @media (max-width: 768px) {
+            .main-tabs {
+                padding: 15px;
+                gap: 5px;
+            }
+            
+            .main-tab {
+                padding: 10px 16px;
+                font-size: 14px;
+                flex: 1;
+                text-align: center;
+            }
+
             .stats {
                 flex-direction: column;
             }
@@ -238,84 +308,169 @@
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1>Analisador de Extrato Completo</h1>
-        
-        <div class="upload-box">
-            <h3>Carregar Arquivos</h3>
-            <div>
-                <label>Extrato CSV:</label>
-                <input type="file" id="csvFile" accept=".csv" onchange="handleFileSelect(event, 'csv')">
-                <div id="csvStatus"></div>
-            </div>
-            <div>
-                <label>Categorias Excel:</label>
-                <input type="file" id="excelFile" accept=".xlsx,.xls" onchange="handleFileSelect(event, 'excel')">
-                <div id="excelStatus"></div>
-            </div>
-        </div>
+    <div class="main-tabs">
+        <div class="main-tab active" onclick="showMainSection('extratos')">📊 Análise de Extratos</div>
+        <div class="main-tab" onclick="showMainSection('medicacao')">🏥 Análise de Procedimentos</div>
+    </div>
 
-        <div style="text-align: center;">
-            <button onclick="processFiles()" id="processBtn" disabled>Analisar Completo</button>
-            <button onclick="downloadResults()" id="downloadBtn" disabled>Baixar Excel</button>
-            <button onclick="resetForm()">Limpar</button>
-        </div>
-
-        <div id="processingStatus"></div>
-
-        <div class="loading" id="loading">
-            <p>Processando arquivos...</p>
-        </div>
-
-        <div class="results" id="results">
-            <h2>Resultados da Análise</h2>
+    <!-- SEÇÃO DE EXTRATOS -->
+    <div id="main-extratos" class="main-content active">
+        <div class="container">
+            <h1>Analisador de Extrato Completo</h1>
             
-            <div class="stats">
-                <div class="stat">
-                    <div class="stat-value" id="totalTransactions">0</div>
-                    <div>Total Transações</div>
+            <div class="upload-box">
+                <h3>Carregar Arquivos</h3>
+                <div>
+                    <label>Extrato CSV:</label>
+                    <input type="file" id="csvFile" accept=".csv" onchange="handleFileSelect(event, 'csv')">
+                    <div id="csvStatus"></div>
                 </div>
-                <div class="stat credito">
-                    <div class="stat-value" id="totalCredits">0</div>
-                    <div>Créditos</div>
-                </div>
-                <div class="stat debito">
-                    <div class="stat-value" id="totalDebits">0</div>
-                    <div>Débitos</div>
-                </div>
-                <div class="stat credito">
-                    <div class="stat-value" id="totalCreditAmount">R$ 0,00</div>
-                    <div>Total Entradas</div>
-                </div>
-                <div class="stat debito">
-                    <div class="stat-value" id="totalDebitAmount">R$ 0,00</div>
-                    <div>Total Saídas</div>
-                </div>
-                <div class="stat saldo">
-                    <div class="stat-value" id="saldoAmount">R$ 0,00</div>
-                    <div>Saldo</div>
+                <div>
+                    <label>Categorias Excel:</label>
+                    <input type="file" id="excelFile" accept=".xlsx,.xls" onchange="handleFileSelect(event, 'excel')">
+                    <div id="excelStatus"></div>
                 </div>
             </div>
 
-            <div class="section-tabs">
-                <div class="tab active" onclick="showSection('geral')">Análise Geral</div>
-                <div class="tab" onclick="showSection('creditos')">Créditos (Entradas)</div>
-                <div class="tab" onclick="showSection('debitos')">Débitos (Saídas)</div>
+            <div style="text-align: center;">
+                <button onclick="processFiles()" id="processBtn" disabled>Analisar Completo</button>
+                <button onclick="downloadResults()" id="downloadBtn" disabled>Baixar Excel</button>
+                <button onclick="resetForm()">Limpar</button>
             </div>
 
-            <div id="section-geral" class="section-content active">
-                <h3>Categorias - Análise Geral</h3>
-                <div id="categoryListGeral"></div>
+            <div id="processingStatus"></div>
+
+            <div class="loading" id="loading">
+                <p>Processando arquivos...</p>
             </div>
 
-            <div id="section-creditos" class="section-content">
-                <h3>Categorias - Créditos (Entradas)</h3>
-                <div id="categoryListCreditos"></div>
+            <div class="results" id="results">
+                <h2>Resultados da Análise</h2>
+                
+                <div class="stats">
+                    <div class="stat">
+                        <div class="stat-value" id="totalTransactions">0</div>
+                        <div>Total Transações</div>
+                    </div>
+                    <div class="stat credito">
+                        <div class="stat-value" id="totalCredits">0</div>
+                        <div>Créditos</div>
+                    </div>
+                    <div class="stat debito">
+                        <div class="stat-value" id="totalDebits">0</div>
+                        <div>Débitos</div>
+                    </div>
+                    <div class="stat credito">
+                        <div class="stat-value" id="totalCreditAmount">R$ 0,00</div>
+                        <div>Total Entradas</div>
+                    </div>
+                    <div class="stat debito">
+                        <div class="stat-value" id="totalDebitAmount">R$ 0,00</div>
+                        <div>Total Saídas</div>
+                    </div>
+                    <div class="stat saldo">
+                        <div class="stat-value" id="saldoAmount">R$ 0,00</div>
+                        <div>Saldo</div>
+                    </div>
+                </div>
+
+                <div class="section-tabs">
+                    <div class="tab active" onclick="showSection('geral')">Análise Geral</div>
+                    <div class="tab" onclick="showSection('creditos')">Créditos (Entradas)</div>
+                    <div class="tab" onclick="showSection('debitos')">Débitos (Saídas)</div>
+                </div>
+
+                <div id="section-geral" class="section-content active">
+                    <h3>Categorias - Análise Geral</h3>
+                    <div id="categoryListGeral"></div>
+                </div>
+
+                <div id="section-creditos" class="section-content">
+                    <h3>Categorias - Créditos (Entradas)</h3>
+                    <div id="categoryListCreditos"></div>
+                </div>
+
+                <div id="section-debitos" class="section-content">
+                    <h3>Categorias - Débitos (Saídas)</h3>
+                    <div id="categoryListDebitos"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- SEÇÃO DE PROCEDIMENTOS -->
+    <div id="main-medicacao" class="main-content">
+        <div class="container">
+            <h1>Análise de Procedimentos Médicos</h1>
+            
+            <div class="upload-box">
+                <h3>Carregar Dados de Procedimentos</h3>
+                <div>
+                    <label>Arquivo de Procedimentos (Excel):</label>
+                    <input type="file" id="medicationFile" accept=".xlsx,.xls" onchange="handleMedicationFileSelect(event)">
+                    <div id="medicationFileStatus"></div>
+                </div>
+                <div>
+                    <label>Arquivo de Categorias (Excel):</label>
+                    <input type="file" id="categoriesFile" accept=".xlsx,.xls" onchange="handleCategoriesFileSelect(event)">
+                    <div id="categoriesFileStatus"></div>
+                </div>
             </div>
 
-            <div id="section-debitos" class="section-content">
-                <h3>Categorias - Débitos (Saídas)</h3>
-                <div id="categoryListDebitos"></div>
+            <div style="text-align: center;">
+                <button onclick="processMedicationFile()" id="processMedicationBtn" disabled>Analisar Procedimentos</button>
+                <button onclick="downloadMedicationResults()" id="downloadMedicationBtn" disabled>Baixar Relatório</button>
+                <button onclick="resetMedicationForm()">Limpar</button>
+            </div>
+
+            <div id="medicationProcessingStatus"></div>
+
+            <div class="loading" id="medicationLoading">
+                <p>Processando dados de procedimentos...</p>
+            </div>
+
+            <div class="results" id="medicationResults">
+                <h2>Análise de Procedimentos</h2>
+                
+                <div class="stats">
+                    <div class="stat medicacao">
+                        <div class="stat-value" id="totalProcedures">0</div>
+                        <div>Total Procedimentos</div>
+                    </div>
+                    <div class="stat medicacao">
+                        <div class="stat-value" id="totalCategories">0</div>
+                        <div>Categorias</div>
+                    </div>
+                    <div class="stat credito">
+                        <div class="stat-value" id="totalAmount">R$ 0,00</div>
+                        <div>Valor Total</div>
+                    </div>
+                    <div class="stat saldo">
+                        <div class="stat-value" id="totalUnits">0</div>
+                        <div>Unidades</div>
+                    </div>
+                </div>
+
+                <div class="section-tabs">
+                    <div class="tab active" onclick="showMedicationSection('categorias')">Por Categorias</div>
+                    <div class="tab" onclick="showMedicationSection('procedimentos')">Por Procedimentos</div>
+                    <div class="tab" onclick="showMedicationSection('unidades')">Por Unidades</div>
+                </div>
+
+                <div id="medication-section-categorias" class="section-content active">
+                    <h3>Totais por Categoria</h3>
+                    <div id="categoriesList"></div>
+                </div>
+
+                <div id="medication-section-procedimentos" class="section-content">
+                    <h3>Todos os Procedimentos</h3>
+                    <div id="proceduresList"></div>
+                </div>
+
+                <div id="medication-section-unidades" class="section-content">
+                    <h3>Análise por Unidades</h3>
+                    <div id="unitsList"></div>
+                </div>
             </div>
         </div>
     </div>
@@ -323,8 +478,38 @@
     <script>
         let csvFile = null;
         let excelFile = null;
+        let medicationFile = null;
+        let categoriesFile = null;
         let processedResults = null;
+        let medicationResults = null;
 
+        // FUNÇÕES GERAIS
+        function showMainSection(section) {
+            // Remover active de todas as main tabs e contents
+            document.querySelectorAll('.main-tab').forEach(tab => tab.classList.remove('active'));
+            document.querySelectorAll('.main-content').forEach(content => content.classList.remove('active'));
+            
+            // Ativar tab e content selecionados
+            event.target.classList.add('active');
+            document.getElementById(`main-${section}`).classList.add('active');
+        }
+
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+        }
+
+        function formatCurrency(value) {
+            return new Intl.NumberFormat('pt-BR', {
+                style: 'currency',
+                currency: 'BRL'
+            }).format(value);
+        }
+
+        // FUNÇÕES DE EXTRATOS (código original)
         function handleFileSelect(event, type) {
             const file = event.target.files[0];
             const statusDiv = document.getElementById(type + 'Status');
@@ -339,14 +524,6 @@
                 statusDiv.innerHTML = `<div class="status success">✓ ${file.name} (${formatFileSize(file.size)})</div>`;
                 checkFilesLoaded();
             }
-        }
-
-        function formatFileSize(bytes) {
-            if (bytes === 0) return '0 Bytes';
-            const k = 1024;
-            const sizes = ['Bytes', 'KB', 'MB'];
-            const i = Math.floor(Math.log(bytes) / Math.log(k));
-            return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
         }
 
         function checkFilesLoaded() {
@@ -543,13 +720,6 @@
             itemsDiv.classList.toggle('show');
         }
 
-        function formatCurrency(value) {
-            return new Intl.NumberFormat('pt-BR', {
-                style: 'currency',
-                currency: 'BRL'
-            }).format(value);
-        }
-
         function showLoading(show) {
             document.getElementById('loading').style.display = show ? 'block' : 'none';
         }
@@ -609,6 +779,322 @@
             
             // Resetar para tab geral
             showSection('geral');
+        }
+
+        // FUNÇÕES DE PROCEDIMENTOS MÉDICOS (novas)
+        function handleMedicationFileSelect(event) {
+            const file = event.target.files[0];
+            const statusDiv = document.getElementById('medicationFileStatus');
+            
+            if (file) {
+                medicationFile = file;
+                statusDiv.innerHTML = `<div class="status success">✓ ${file.name} (${formatFileSize(file.size)})</div>`;
+                checkMedicationFilesLoaded();
+            }
+        }
+
+        function handleCategoriesFileSelect(event) {
+            const file = event.target.files[0];
+            const statusDiv = document.getElementById('categoriesFileStatus');
+            
+            if (file) {
+                categoriesFile = file;
+                statusDiv.innerHTML = `<div class="status success">✓ ${file.name} (${formatFileSize(file.size)})</div>`;
+                checkMedicationFilesLoaded();
+            }
+        }
+
+        function checkMedicationFilesLoaded() {
+            const processBtn = document.getElementById('processMedicationBtn');
+            if (medicationFile && categoriesFile) {
+                processBtn.disabled = false;
+            }
+        }
+
+        async function processMedicationFile() {
+            if (!medicationFile || !categoriesFile) {
+                showMedicationError('Carregue ambos os arquivos primeiro.');
+                return;
+            }
+
+            showMedicationLoading(true);
+            updateMedicationProcessingStatus('Processando dados de procedimentos...', 'status');
+
+            const formData = new FormData();
+            formData.append('procedures_file', medicationFile);
+            formData.append('categories_file', categoriesFile);
+
+            try {
+                const response = await fetch('/api/procedures', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    throw new Error(`Erro ${response.status}: ${response.statusText}`);
+                }
+
+                const data = await response.json();
+                
+                if (data.success) {
+                    updateMedicationProcessingStatus('Dados processados com sucesso!', 'success');
+                    displayMedicationResults(data);
+                } else {
+                    throw new Error(data.error || 'Erro desconhecido');
+                }
+
+            } catch (error) {
+                updateMedicationProcessingStatus(`Erro: ${error.message}`, 'error');
+            } finally {
+                showMedicationLoading(false);
+            }
+        }
+
+        function displayMedicationResults(data) {
+            medicationResults = data;
+
+            // Atualizar estatísticas
+            document.getElementById('totalProcedures').textContent = data.estatisticas.total_procedimentos;
+            document.getElementById('totalCategories').textContent = data.estatisticas.total_categorias;
+            document.getElementById('totalAmount').textContent = formatCurrency(data.estatisticas.valor_total);
+            document.getElementById('totalUnits').textContent = data.estatisticas.total_unidades;
+
+            // Mostrar dados em cada seção
+            displayMedicationCategories('categoriesList', data.categorias, 'categorias');
+            displayProcedures('proceduresList', data.procedimentos, 'procedimentos');
+            displayUnits('unitsList', data.unidades, 'unidades');
+
+            document.getElementById('medicationResults').style.display = 'block';
+            
+            if (data.excel_file) {
+                document.getElementById('downloadMedicationBtn').disabled = false;
+            }
+        }
+
+        function displayMedicationCategories(containerId, categorias, section) {
+            const listDiv = document.getElementById(containerId);
+            listDiv.innerHTML = '';
+            
+            categorias.forEach((categoria, index) => {
+                const categoryDiv = document.createElement('div');
+                categoryDiv.className = 'category';
+                
+                const headerDiv = document.createElement('div');
+                headerDiv.className = 'category-header';
+                headerDiv.onclick = () => toggleCategoryItems(section, index);
+                headerDiv.innerHTML = `
+                    <div>
+                        <strong>${categoria.categoria}</strong><br>
+                        <small>${categoria.quantidade} procedimentos • ${categoria.percentual.toFixed(1)}% do total</small>
+                    </div>
+                    <div>
+                        <strong>${formatCurrency(categoria.total)}</strong>
+                    </div>
+                `;
+                
+                const itemsDiv = document.createElement('div');
+                itemsDiv.className = 'category-items';
+                itemsDiv.id = `items-${section}-${index}`;
+                
+                if (categoria.procedimentos && categoria.procedimentos.length > 0) {
+                    categoria.procedimentos.forEach((proc, itemIndex) => {
+                        const itemDiv = document.createElement('div');
+                        itemDiv.className = 'item';
+                        
+                        itemDiv.innerHTML = `
+                            <div>
+                                <strong>${itemIndex + 1}.</strong> ${proc.procedimento}
+                                <br><small>${proc.quantidade} execuções</small>
+                            </div>
+                            <div>
+                                <strong>${formatCurrency(proc.total)}</strong>
+                            </div>
+                        `;
+                        
+                        itemsDiv.appendChild(itemDiv);
+                    });
+                }
+                
+                categoryDiv.appendChild(headerDiv);
+                categoryDiv.appendChild(itemsDiv);
+                listDiv.appendChild(categoryDiv);
+            });
+        }
+
+        function displayProcedures(containerId, procedimentos, section) {
+            const listDiv = document.getElementById(containerId);
+            listDiv.innerHTML = '';
+            
+            procedimentos.forEach((proc, index) => {
+                const categoryDiv = document.createElement('div');
+                categoryDiv.className = 'category';
+                
+                const headerDiv = document.createElement('div');
+                headerDiv.className = 'category-header';
+                headerDiv.onclick = () => toggleCategoryItems(section, index);
+                headerDiv.innerHTML = `
+                    <div>
+                        <strong>${proc.procedimento}</strong><br>
+                        <small>Categoria: ${proc.categoria} • ${proc.quantidade} execuções</small>
+                    </div>
+                    <div>
+                        <strong>${formatCurrency(proc.total)}</strong>
+                    </div>
+                `;
+                
+                const itemsDiv = document.createElement('div');
+                itemsDiv.className = 'category-items';
+                itemsDiv.id = `items-${section}-${index}`;
+                
+                if (proc.unidades && Object.keys(proc.unidades).length > 0) {
+                    Object.entries(proc.unidades).forEach(([unidade, dados], itemIndex) => {
+                        const itemDiv = document.createElement('div');
+                        itemDiv.className = 'item';
+                        
+                        itemDiv.innerHTML = `
+                            <div>
+                                <strong>${unidade}</strong>
+                                <br><small>${dados.quantidade} execuções</small>
+                            </div>
+                            <div>
+                                <strong>${formatCurrency(dados.total)}</strong>
+                            </div>
+                        `;
+                        
+                        itemsDiv.appendChild(itemDiv);
+                    });
+                }
+                
+                categoryDiv.appendChild(headerDiv);
+                categoryDiv.appendChild(itemsDiv);
+                listDiv.appendChild(categoryDiv);
+            });
+        }
+
+        function displayUnits(containerId, unidades, section) {
+            const listDiv = document.getElementById(containerId);
+            listDiv.innerHTML = '';
+            
+            unidades.forEach((unidade, index) => {
+                const categoryDiv = document.createElement('div');
+                categoryDiv.className = 'category';
+                
+                const headerDiv = document.createElement('div');
+                headerDiv.className = 'category-header';
+                headerDiv.onclick = () => toggleCategoryItems(section, index);
+                headerDiv.innerHTML = `
+                    <div>
+                        <strong>${unidade.unidade}</strong><br>
+                        <small>${unidade.quantidade} procedimentos • ${unidade.percentual.toFixed(1)}% do total</small>
+                    </div>
+                    <div>
+                        <strong>${formatCurrency(unidade.total)}</strong>
+                    </div>
+                `;
+                
+                const itemsDiv = document.createElement('div');
+                itemsDiv.className = 'category-items';
+                itemsDiv.id = `items-${section}-${index}`;
+                
+                if (unidade.categorias && unidade.categorias.length > 0) {
+                    unidade.categorias.forEach((cat, itemIndex) => {
+                        const itemDiv = document.createElement('div');
+                        itemDiv.className = 'item';
+                        
+                        itemDiv.innerHTML = `
+                            <div>
+                                <strong>${cat.categoria}</strong>
+                                <br><small>${cat.quantidade} procedimentos</small>
+                            </div>
+                            <div>
+                                <strong>${formatCurrency(cat.total)}</strong>
+                            </div>
+                        `;
+                        
+                        itemsDiv.appendChild(itemDiv);
+                    });
+                }
+                
+                categoryDiv.appendChild(headerDiv);
+                categoryDiv.appendChild(itemsDiv);
+                listDiv.appendChild(categoryDiv);
+            });
+        }
+
+        function showMedicationSection(section) {
+            // Remover active de todas as tabs e sections de procedimentos
+            document.querySelectorAll('#main-medicacao .tab').forEach(tab => tab.classList.remove('active'));
+            document.querySelectorAll('#main-medicacao .section-content').forEach(content => content.classList.remove('active'));
+            
+            // Ativar tab e section selecionadas
+            event.target.classList.add('active');
+            document.getElementById(`medication-section-${section}`).classList.add('active');
+        }
+
+        function updateMedicationProcessingStatus(message, type) {
+            const statusDiv = document.getElementById('medicationProcessingStatus');
+            statusDiv.innerHTML = `<div class="status ${type}">${message}</div>`;
+        }
+
+        function showMedicationLoading(show) {
+            document.getElementById('medicationLoading').style.display = show ? 'block' : 'none';
+        }
+
+        function showMedicationError(message) {
+            updateMedicationProcessingStatus(message, 'error');
+        }
+
+        function downloadMedicationResults() {
+            if (!medicationResults || !medicationResults.excel_file) {
+                showMedicationError('Arquivo Excel não disponível.');
+                return;
+            }
+
+            try {
+                const today = new Date();
+                const dateStr = today.getDate().toString().padStart(2, '0') + '-' + 
+                             (today.getMonth() + 1).toString().padStart(2, '0') + '-' + 
+                             today.getFullYear();
+                const filename = `Analise_Procedimentos_${dateStr}.xlsx`;
+                
+                const binaryString = atob(medicationResults.excel_file);
+                const bytes = new Uint8Array(binaryString.length);
+                for (let i = 0; i < binaryString.length; i++) {
+                    bytes[i] = binaryString.charCodeAt(i);
+                }
+                
+                const blob = new Blob([bytes], { 
+                    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
+                });
+                
+                const link = document.createElement('a');
+                link.href = URL.createObjectURL(blob);
+                link.download = filename;
+                link.click();
+                
+                updateMedicationProcessingStatus('Excel baixado com sucesso!', 'success');
+                
+            } catch (error) {
+                showMedicationError('Erro ao baixar Excel. Tente novamente.');
+            }
+        }
+
+        function resetMedicationForm() {
+            medicationFile = null;
+            categoriesFile = null;
+            medicationResults = null;
+            
+            document.getElementById('medicationFile').value = '';
+            document.getElementById('categoriesFile').value = '';
+            document.getElementById('medicationFileStatus').innerHTML = '';
+            document.getElementById('categoriesFileStatus').innerHTML = '';
+            document.getElementById('processMedicationBtn').disabled = true;
+            document.getElementById('downloadMedicationBtn').disabled = true;
+            document.getElementById('medicationResults').style.display = 'none';
+            document.getElementById('medicationProcessingStatus').innerHTML = '';
+            
+            // Resetar para tab categorias
+            showMedicationSection('categorias');
         }
     </script>
 </body>

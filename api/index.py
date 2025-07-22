@@ -26,7 +26,12 @@ class handler(BaseHTTPRequestHandler):
     
     def do_POST(self):
         try:
-            print("=== INICIANDO PROCESSAMENTO ===")
+            # Verificar se é endpoint de procedimentos
+            if self.path == '/api/procedures':
+                return self.processar_procedimentos()
+            
+            # Código original para extratos
+            print("=== INICIANDO PROCESSAMENTO EXTRATOS ===")
             
             content_length = int(self.headers.get('Content-Length', 0))
             post_data = self.rfile.read(content_length)
@@ -45,7 +50,6 @@ class handler(BaseHTTPRequestHandler):
             
             csv_data = files.get('csv_file')
             excel_data = files.get('excel_file')
-            # REMOVIDO: incluir_creditos - sempre processar tudo
             
             if not csv_data or not excel_data:
                 raise Exception("Arquivos necessários não foram enviados")
@@ -61,7 +65,7 @@ class handler(BaseHTTPRequestHandler):
             
             # Processar CSV - SEMPRE incluir tudo
             print("Processando CSV...")
-            df = self.processar_csv(csv_data, incluir_creditos=True)  # Sempre True
+            df = self.processar_csv(csv_data, incluir_creditos=True)
             print(f"Linhas processadas: {len(df)}")
             print(f"Colunas: {list(df.columns)}")
             
@@ -206,6 +210,376 @@ class handler(BaseHTTPRequestHandler):
                 'traceback': traceback.format_exc()
             }
             self.wfile.write(json.dumps(error_response).encode())
+    
+    def processar_procedimentos(self):
+        """Processa dados de procedimentos médicos"""
+        try:
+            print("=== PROCESSANDO PROCEDIMENTOS MÉDICOS ===")
+            
+            content_length = int(self.headers.get('Content-Length', 0))
+            post_data = self.rfile.read(content_length)
+            
+            content_type = self.headers.get('Content-Type', '')
+            boundary = content_type.split('boundary=')[1]
+            
+            files, form_data = self.parse_multipart(post_data, boundary)
+            procedures_data = files.get('procedures_file')
+            categories_data = files.get('categories_file')
+            
+            if not procedures_data or not categories_data:
+                raise Exception("Ambos os arquivos (procedimentos e categorias) são necessários")
+            
+            # Processar arquivos
+            categorias = self.processar_arquivo_categorias(categories_data)
+            df_procedimentos = self.processar_arquivo_procedimentos(procedures_data)
+            
+            # Analisar procedimentos
+            analise = self.analisar_procedimentos_medicos(df_procedimentos, categorias)
+            
+            # Gerar Excel
+            excel_b64 = self.gerar_excel_procedimentos(analise, df_procedimentos)
+            
+            resposta = {
+                'success': True,
+                'estatisticas': analise['estatisticas'],
+                'categorias': analise['categorias'],
+                'procedimentos': analise['procedimentos'],
+                'unidades': analise['unidades'],
+                'excel_file': excel_b64
+            }
+            
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.end_headers()
+            self.wfile.write(json.dumps(resposta).encode())
+            
+        except Exception as e:
+            print(f"Erro nos procedimentos: {e}")
+            self.send_response(500)
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.end_headers()
+            
+            error_response = {'success': False, 'error': str(e)}
+            self.wfile.write(json.dumps(error_response).encode())
+
+    def processar_arquivo_categorias(self, categories_data):
+        """Processa arquivo Excel de categorias"""
+        try:
+            df = pd.read_excel(io.BytesIO(categories_data))
+            
+            # Extrair lista de categorias da primeira coluna
+            categorias = []
+            for _, row in df.iterrows():
+                if pd.notna(row.iloc[0]) and str(row.iloc[0]).strip():
+                    categorias.append(str(row.iloc[0]).strip())
+            
+            print(f"Categorias carregadas: {categorias}")
+            return categorias
+            
+        except Exception as e:
+            raise Exception(f"Erro ao processar arquivo de categorias: {e}")
+
+    def processar_arquivo_procedimentos(self, procedures_data):
+        """Processa arquivo Excel de procedimentos"""
+        try:
+            df = pd.read_excel(io.BytesIO(procedures_data))
+            
+            print(f"Colunas disponíveis: {df.columns.tolist()}")
+            
+            # Verificar se tem as colunas necessárias
+            colunas_necessarias = ['Unidade', 'Procedimento', 'Total do Item']
+            colunas_encontradas = []
+            
+            for col_necessaria in colunas_necessarias:
+                col_encontrada = None
+                for col_original in df.columns:
+                    if col_necessaria.lower() in col_original.lower():
+                        col_encontrada = col_original
+                        break
+                
+                if col_encontrada:
+                    colunas_encontradas.append(col_encontrada)
+                else:
+                    raise Exception(f"Coluna '{col_necessaria}' não encontrada no arquivo")
+            
+            # Renomear colunas para padrão
+            df_normalizado = df[colunas_encontradas].copy()
+            df_normalizado.columns = ['Unidade', 'Procedimento', 'TotalItem']
+            
+            # Limpar dados
+            df_normalizado = df_normalizado.dropna(subset=['Procedimento', 'TotalItem'])
+            df_normalizado['TotalItem'] = pd.to_numeric(df_normalizado['TotalItem'], errors='coerce')
+            df_normalizado = df_normalizado.dropna(subset=['TotalItem'])
+            df_normalizado = df_normalizado[df_normalizado['TotalItem'] > 0]
+            
+            # Garantir que Unidade não seja nula
+            df_normalizado['Unidade'] = df_normalizado['Unidade'].fillna('Não informado')
+            
+            print(f"Registros processados: {len(df_normalizado)}")
+            return df_normalizado
+            
+        except Exception as e:
+            raise Exception(f"Erro ao processar arquivo de procedimentos: {e}")
+
+    def mapear_procedimento_para_categoria(self, procedimento, categorias):
+        """Mapeia procedimento para categoria usando palavras-chave"""
+        if not procedimento:
+            return "Outros"
+        
+        proc_upper = str(procedimento).upper()
+        
+        # Buscar correspondência com categorias
+        for categoria in categorias:
+            cat_upper = str(categoria).upper().strip()
+            
+            # Verificar se a categoria está contida no procedimento
+            if cat_upper in proc_upper:
+                return categoria
+            
+            # Verificações específicas adicionais
+            if cat_upper == 'VITAMINA' and ('VITAMINA' in proc_upper or 'B12' in proc_upper):
+                return categoria
+            if cat_upper == 'CONSULTAS' and ('CONSULTA' in proc_upper):
+                return categoria
+        
+        return "Outros"
+
+    def analisar_procedimentos_medicos(self, df, categorias):
+        """Analisa procedimentos médicos e gera relatórios"""
+        try:
+            print("Iniciando análise de procedimentos...")
+            
+            # Adicionar categoria a cada procedimento
+            df['Categoria'] = df['Procedimento'].apply(
+                lambda x: self.mapear_procedimento_para_categoria(x, categorias)
+            )
+            
+            # === ANÁLISE POR PROCEDIMENTO ===
+            procedimentos_agrupados = df.groupby('Procedimento').agg({
+                'TotalItem': ['sum', 'count'],
+                'Categoria': 'first'
+            }).reset_index()
+            
+            procedimentos_agrupados.columns = ['Procedimento', 'Total', 'Quantidade', 'Categoria']
+            
+            # Adicionar informações por unidade para cada procedimento
+            procedimentos_detalhados = []
+            for _, proc in procedimentos_agrupados.iterrows():
+                unidades_proc = df[df['Procedimento'] == proc['Procedimento']].groupby('Unidade').agg({
+                    'TotalItem': ['sum', 'count']
+                }).reset_index()
+                unidades_proc.columns = ['Unidade', 'Total', 'Quantidade']
+                
+                unidades_dict = {}
+                for _, unidade in unidades_proc.iterrows():
+                    unidades_dict[unidade['Unidade']] = {
+                        'total': float(unidade['Total']),
+                        'quantidade': int(unidade['Quantidade'])
+                    }
+                
+                procedimentos_detalhados.append({
+                    'procedimento': proc['Procedimento'],
+                    'categoria': proc['Categoria'],
+                    'total': float(proc['Total']),
+                    'quantidade': int(proc['Quantidade']),
+                    'unidades': unidades_dict
+                })
+            
+            procedimentos_detalhados = sorted(procedimentos_detalhados, key=lambda x: x['total'], reverse=True)
+            
+            # === ANÁLISE POR CATEGORIA ===
+            categorias_agrupadas = df.groupby('Categoria').agg({
+                'TotalItem': ['sum', 'count']
+            }).reset_index()
+            categorias_agrupadas.columns = ['Categoria', 'Total', 'Quantidade']
+            
+            # Adicionar percentuais
+            total_geral = df['TotalItem'].sum()
+            categorias_agrupadas['Percentual'] = (categorias_agrupadas['Total'] / total_geral) * 100
+            categorias_agrupadas = categorias_agrupadas.sort_values('Total', ascending=False)
+            
+            # Preparar categorias detalhadas
+            categorias_detalhadas = []
+            for _, cat in categorias_agrupadas.iterrows():
+                # Buscar procedimentos desta categoria
+                procs_categoria = [p for p in procedimentos_detalhados if p['categoria'] == cat['Categoria']]
+                procs_categoria = sorted(procs_categoria, key=lambda x: x['total'], reverse=True)
+                
+                procedimentos_lista = []
+                for proc in procs_categoria:
+                    procedimentos_lista.append({
+                        'procedimento': proc['procedimento'],
+                        'total': proc['total'],
+                        'quantidade': proc['quantidade']
+                    })
+                
+                categorias_detalhadas.append({
+                    'categoria': cat['Categoria'],
+                    'total': float(cat['Total']),
+                    'quantidade': int(cat['Quantidade']),
+                    'percentual': float(cat['Percentual']),
+                    'procedimentos': procedimentos_lista
+                })
+            
+            # === ANÁLISE POR UNIDADE ===
+            unidades_agrupadas = df.groupby('Unidade').agg({
+                'TotalItem': ['sum', 'count']
+            }).reset_index()
+            unidades_agrupadas.columns = ['Unidade', 'Total', 'Quantidade']
+            unidades_agrupadas['Percentual'] = (unidades_agrupadas['Total'] / total_geral) * 100
+            unidades_agrupadas = unidades_agrupadas.sort_values('Total', ascending=False)
+            
+            # Unidades detalhadas
+            unidades_detalhadas = []
+            for _, unidade in unidades_agrupadas.iterrows():
+                # Buscar categorias desta unidade
+                cats_unidade = df[df['Unidade'] == unidade['Unidade']].groupby('Categoria').agg({
+                    'TotalItem': ['sum', 'count']
+                }).reset_index()
+                cats_unidade.columns = ['Categoria', 'Total', 'Quantidade']
+                cats_unidade = cats_unidade.sort_values('Total', ascending=False)
+                
+                categorias_lista = []
+                for _, cat in cats_unidade.iterrows():
+                    categorias_lista.append({
+                        'categoria': cat['Categoria'],
+                        'total': float(cat['Total']),
+                        'quantidade': int(cat['Quantidade'])
+                    })
+                
+                unidades_detalhadas.append({
+                    'unidade': unidade['Unidade'],
+                    'total': float(unidade['Total']),
+                    'quantidade': int(unidade['Quantidade']),
+                    'percentual': float(unidade['Percentual']),
+                    'categorias': categorias_lista
+                })
+            
+            # Estatísticas gerais
+            estatisticas = {
+                'total_procedimentos': len(df),
+                'total_categorias': len(categorias_agrupadas),
+                'valor_total': float(total_geral),
+                'total_unidades': len(unidades_agrupadas)
+            }
+            
+            return {
+                'estatisticas': estatisticas,
+                'categorias': categorias_detalhadas,
+                'procedimentos': procedimentos_detalhados,
+                'unidades': unidades_detalhadas
+            }
+            
+        except Exception as e:
+            raise Exception(f"Erro na análise de procedimentos: {e}")
+
+    def gerar_excel_procedimentos(self, analise, df):
+        """Gera Excel com relatório de procedimentos"""
+        try:
+            wb = openpyxl.Workbook()
+            wb.remove(wb.active)
+            
+            # === ABA RESUMO ===
+            ws_resumo = wb.create_sheet("Resumo Geral")
+            ws_resumo.append(["ANÁLISE DE PROCEDIMENTOS MÉDICOS"])
+            ws_resumo.append([f"Gerado em: {pd.Timestamp.now().strftime('%d/%m/%Y %H:%M')}"])
+            ws_resumo.append([])
+            
+            # Estatísticas
+            stats = analise['estatisticas']
+            ws_resumo.append(["ESTATÍSTICAS GERAIS"])
+            ws_resumo.append(["Total de Procedimentos", stats['total_procedimentos']])
+            ws_resumo.append(["Total de Categorias", stats['total_categorias']])
+            ws_resumo.append(["Valor Total", f"R$ {stats['valor_total']:,.2f}"])
+            ws_resumo.append(["Total de Unidades", stats['total_unidades']])
+            ws_resumo.append([])
+            
+            # === ABA CATEGORIAS ===
+            ws_categorias = wb.create_sheet("Por Categorias")
+            ws_categorias.append(["ANÁLISE POR CATEGORIAS"])
+            ws_categorias.append([])
+            ws_categorias.append(["Categoria", "Valor Total", "Quantidade", "Percentual"])
+            
+            for cat in analise['categorias']:
+                ws_categorias.append([
+                    cat['categoria'],
+                    f"R$ {cat['total']:,.2f}",
+                    cat['quantidade'],
+                    f"{cat['percentual']:.1f}%"
+                ])
+            
+            # === ABA PROCEDIMENTOS ===
+            ws_procedimentos = wb.create_sheet("Por Procedimentos")
+            ws_procedimentos.append(["ANÁLISE POR PROCEDIMENTOS"])
+            ws_procedimentos.append([])
+            ws_procedimentos.append(["Procedimento", "Categoria", "Valor Total", "Quantidade"])
+            
+            for proc in analise['procedimentos']:
+                ws_procedimentos.append([
+                    proc['procedimento'],
+                    proc['categoria'],
+                    f"R$ {proc['total']:,.2f}",
+                    proc['quantidade']
+                ])
+            
+            # === ABA UNIDADES ===
+            ws_unidades = wb.create_sheet("Por Unidades")
+            ws_unidades.append(["ANÁLISE POR UNIDADES"])
+            ws_unidades.append([])
+            ws_unidades.append(["Unidade", "Valor Total", "Quantidade", "Percentual"])
+            
+            for unidade in analise['unidades']:
+                ws_unidades.append([
+                    unidade['unidade'],
+                    f"R$ {unidade['total']:,.2f}",
+                    unidade['quantidade'],
+                    f"{unidade['percentual']:.1f}%"
+                ])
+            
+            # === ABAS DETALHADAS POR CATEGORIA ===
+            for cat in analise['categorias']:
+                nome_aba = cat['categoria'].replace('/', '-').replace('\\', '-')[:31]
+                ws_cat = wb.create_sheet(f"Cat_{nome_aba}")
+                
+                ws_cat.append([f"CATEGORIA: {cat['categoria']}"])
+                ws_cat.append([f"Total: R$ {cat['total']:,.2f}"])
+                ws_cat.append([f"Quantidade: {cat['quantidade']} procedimentos"])
+                ws_cat.append([])
+                ws_cat.append(["Procedimento", "Valor", "Quantidade"])
+                
+                for proc in cat['procedimentos']:
+                    ws_cat.append([
+                        proc['procedimento'],
+                        f"R$ {proc['total']:,.2f}",
+                        proc['quantidade']
+                    ])
+            
+            # Ajustar larguras das colunas
+            for ws in wb.worksheets:
+                for column in ws.columns:
+                    max_length = 0
+                    column_letter = column[0].column_letter
+                    for cell in column:
+                        try:
+                            if len(str(cell.value)) > max_length:
+                                max_length = len(str(cell.value))
+                        except:
+                            pass
+                    adjusted_width = min(max_length + 2, 50)
+                    ws.column_dimensions[column_letter].width = adjusted_width
+            
+            # Salvar
+            excel_buffer = io.BytesIO()
+            wb.save(excel_buffer)
+            excel_buffer.seek(0)
+            
+            return base64.b64encode(excel_buffer.getvalue()).decode()
+            
+        except Exception as e:
+            print(f"Erro ao gerar Excel de procedimentos: {e}")
+            return None
     
     def parse_multipart(self, body, boundary):
         parts = body.split(f'--{boundary}'.encode())
