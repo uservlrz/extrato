@@ -818,6 +818,15 @@
         async function processMedicationFile() {
             console.log("🔄 Iniciando processamento...");
             
+            // TESTE: Verificar se o endpoint existe
+            console.log("🔍 Testando se endpoint /api/procedures existe...");
+            try {
+                const testResponse = await fetch('/api/procedures', { method: 'GET' });
+                console.log("📊 Teste GET /api/procedures:", testResponse.status, testResponse.statusText);
+            } catch (testError) {
+                console.log("❌ Teste GET falhou:", testError);
+            }
+            
             if (!medicationFile || !categoriesFile) {
                 showMedicationError('Carregue ambos os arquivos primeiro.');
                 return;
