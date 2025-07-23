@@ -266,198 +266,283 @@ class handler(BaseHTTPRequestHandler):
         return files, form_data
 
     def processar_arquivo_categorias(self, categories_data):
-        """Processa arquivo Excel de categorias"""
+        """Processa arquivo Excel de categorias de forma mais robusta"""
         try:
             df = pd.read_excel(io.BytesIO(categories_data))
+            print(f"Arquivo de categorias carregado: {df.shape}")
             
-            # Extrair lista de categorias da primeira coluna
             categorias = []
-            for _, row in df.iterrows():
-                if pd.notna(row.iloc[0]) and str(row.iloc[0]).strip():
-                    categorias.append(str(row.iloc[0]).strip())
             
-            print(f"Categorias carregadas: {categorias}")
+            # Tentar diferentes abordagens para extrair categorias
+            for col_idx in range(min(3, df.shape[1])):  # Testar primeiras 3 colunas
+                for _, row in df.iterrows():
+                    if pd.notna(row.iloc[col_idx]):
+                        valor = str(row.iloc[col_idx]).strip()
+                        if valor and len(valor) > 1 and valor not in categorias:
+                            # Filtrar valores que parecem ser categorias válidas
+                            if not valor.isdigit() and not valor.startswith('Unnamed'):
+                                categorias.append(valor)
+            
+            # Se encontrou poucas categorias, tentar uma abordagem mais agressiva
+            if len(categorias) < 5:
+                print("Poucas categorias encontradas, expandindo busca...")
+                for col in df.columns:
+                    for _, row in df.iterrows():
+                        if pd.notna(row[col]):
+                            valor = str(row[col]).strip()
+                            if (valor and len(valor) > 2 and valor not in categorias 
+                                and not valor.isdigit() and not valor.startswith('Unnamed')):
+                                categorias.append(valor)
+            
+            # Remover duplicatas e limpar
+            categorias = list(set(categorias))
+            categorias = [cat for cat in categorias if len(cat) > 2]
+            
+            print(f"Categorias finais encontradas ({len(categorias)}): {categorias[:10]}...")
             return categorias
             
         except Exception as e:
-            raise Exception(f"Erro ao processar arquivo de categorias: {e}")
+            print(f"Erro ao processar categorias: {e}")
+            # Retornar categorias padrão como fallback
+            return ["CONSULTAS", "EXAMES", "PROCEDIMENTOS", "MEDICAMENTOS", "OUTROS"]
 
     def processar_arquivo_procedimentos(self, procedures_data):
-        """Processa arquivo Excel de procedimentos - Estrutura IPG"""
+        """Versão mais robusta para processar arquivo de procedimentos"""
         try:
-            print("Processando arquivo de procedimentos IPG...")
+            print("=== PROCESSAMENTO ROBUSTO DE PROCEDIMENTOS ===")
             
-            # Ler o arquivo Excel
-            df_raw = pd.read_excel(io.BytesIO(procedures_data))
-            print(f"Arquivo carregado: {df_raw.shape}")
+            # Primeiro, vamos ler o arquivo sem assumir nada sobre cabeçalhos
+            df_raw = pd.read_excel(io.BytesIO(procedures_data), header=None)
+            print(f"Arquivo carregado sem cabeçalho: {df_raw.shape}")
             
-            # Verificar estrutura esperada do IPG
-            # Linha 0: vazia, Linha 1: título, Linha 2: cabeçalhos
-            print("Primeiras 5 linhas do arquivo:")
-            for i in range(min(5, len(df_raw))):
-                primeira_coluna = str(df_raw.iloc[i, 0]) if pd.notna(df_raw.iloc[i, 0]) else "VAZIO"
-                print(f"  Linha {i}: {primeira_coluna}")
+            # Examinar todas as linhas para encontrar os dados
+            print("=== ANÁLISE COMPLETA DO ARQUIVO ===")
+            for i in range(min(15, len(df_raw))):
+                linha_info = []
+                for j in range(min(12, df_raw.shape[1])):
+                    valor = df_raw.iloc[i, j]
+                    if pd.notna(valor):
+                        valor_str = str(valor).strip()[:30]  # Mostrar só primeiros 30 chars
+                        linha_info.append(f"Col{j}: {valor_str}")
+                    else:
+                        linha_info.append(f"Col{j}: VAZIO")
+                print(f"Linha {i}: {' | '.join(linha_info[:5])}...")  # Mostrar só primeiras 5 colunas
             
-            # Tentar encontrar os cabeçalhos
-            header_row = None
-            for i in range(min(5, len(df_raw))):
-                # Verificar se essa linha contém "Unidade" na primeira coluna
-                first_cell = str(df_raw.iloc[i, 0]).strip().lower() if pd.notna(df_raw.iloc[i, 0]) else ""
-                if 'unidade' in first_cell:
-                    header_row = i
-                    print(f"Cabeçalhos encontrados na linha {i}")
-                    break
+            # ESTRATÉGIA 1: Buscar palavras-chave para identificar colunas
+            unidade_col = None
+            procedimento_col = None
+            valor_col = None
             
-            if header_row is None:
-                # Fallback: assumir que os cabeçalhos estão na linha 2 (padrão IPG)
-                header_row = 2
-                print("Usando linha 2 como cabeçalho (padrão IPG)")
+            print("\n=== BUSCANDO COLUNAS POR PALAVRAS-CHAVE ===")
+            for i in range(min(10, len(df_raw))):
+                for j in range(min(15, df_raw.shape[1])):
+                    cell_value = str(df_raw.iloc[i, j]).upper().strip() if pd.notna(df_raw.iloc[i, j]) else ""
+                    
+                    # Buscar coluna Unidade
+                    if ('UNIDADE' in cell_value or 'UNIT' in cell_value) and unidade_col is None:
+                        unidade_col = j
+                        print(f"✅ Coluna UNIDADE encontrada: Col {j} (Linha {i})")
+                    
+                    # Buscar coluna Procedimento
+                    if ('PROCEDIMENTO' in cell_value or 'PROC' in cell_value or 'DESCRI' in cell_value) and procedimento_col is None:
+                        procedimento_col = j
+                        print(f"✅ Coluna PROCEDIMENTO encontrada: Col {j} (Linha {i})")
+                    
+                    # Buscar coluna Valor/Total
+                    if ('TOTAL' in cell_value or 'VALOR' in cell_value or 'VLR' in cell_value) and 'ITEM' in cell_value and valor_col is None:
+                        valor_col = j
+                        print(f"✅ Coluna VALOR encontrada: Col {j} (Linha {i})")
             
-            # Recarregar com o cabeçalho correto
-            df = pd.read_excel(io.BytesIO(procedures_data), header=header_row)
-            print(f"Dados recarregados com header na linha {header_row}: {df.shape}")
-            print(f"Colunas encontradas: {list(df.columns)}")
-            
-            # Mapear as colunas específicas do IPG
-            # Estrutura conhecida: Unidade (col 0), Procedimento (col 5), Total do Item (col 10)
-            colunas_mapeadas = {}
-            
-            for i, col_name in enumerate(df.columns):
-                col_str = str(col_name).strip()
-                print(f"  Coluna {i}: '{col_str}'")
+            # ESTRATÉGIA 2: Se não encontrou pelas palavras-chave, usar análise de dados
+            if not all([unidade_col is not None, procedimento_col is not None, valor_col is not None]):
+                print("\n=== ESTRATÉGIA ALTERNATIVA: ANÁLISE DE DADOS ===")
                 
-                # Mapear Unidade
-                if i == 0 or 'unidade' in col_str.lower():
-                    colunas_mapeadas['Unidade'] = col_name
-                
-                # Mapear Procedimento  
-                elif i == 5 or 'procedimento' in col_str.lower():
-                    colunas_mapeadas['Procedimento'] = col_name
-                
-                # Mapear Total do Item
-                elif i == 10 or 'total do item' in col_str.lower() or 'total item' in col_str.lower():
-                    colunas_mapeadas['TotalItem'] = col_name
+                # Analisar cada coluna para determinar seu tipo
+                for j in range(min(15, df_raw.shape[1])):
+                    sample_data = []
+                    for i in range(5, min(25, len(df_raw))):  # Pular primeiras linhas (cabeçalhos)
+                        if pd.notna(df_raw.iloc[i, j]):
+                            sample_data.append(str(df_raw.iloc[i, j]).strip())
+                    
+                    if len(sample_data) < 3:
+                        continue
+                    
+                    # Verificar se é coluna de valor (números)
+                    numeric_count = 0
+                    for val in sample_data[:10]:
+                        try:
+                            # Tentar converter para float
+                            val_clean = val.replace(',', '.').replace('R$', '').replace(' ', '')
+                            float(val_clean)
+                            numeric_count += 1
+                        except:
+                            pass
+                    
+                    if numeric_count > len(sample_data) * 0.7 and valor_col is None:
+                        valor_col = j
+                        print(f"📊 Coluna VALOR identificada por análise: Col {j}")
+                    
+                    # Verificar se é coluna de texto longo (procedimentos)
+                    if numeric_count < len(sample_data) * 0.3:
+                        avg_length = sum(len(val) for val in sample_data) / len(sample_data)
+                        if avg_length > 15 and procedimento_col is None:  # Textos longos = procedimentos
+                            procedimento_col = j
+                            print(f"📝 Coluna PROCEDIMENTO identificada por análise: Col {j}")
+                        elif avg_length < 15 and unidade_col is None:  # Textos curtos = unidades
+                            unidade_col = j
+                            print(f"🏢 Coluna UNIDADE identificada por análise: Col {j}")
             
-            print(f"Colunas mapeadas: {colunas_mapeadas}")
+            # ESTRATÉGIA 3: Fallback para posições conhecidas
+            if not all([unidade_col is not None, procedimento_col is not None, valor_col is not None]):
+                print("\n=== USANDO POSIÇÕES PADRÃO COMO FALLBACK ===")
+                if unidade_col is None:
+                    unidade_col = 0
+                    print(f"🔄 Usando Col 0 para UNIDADE")
+                if procedimento_col is None:
+                    procedimento_col = 5 if df_raw.shape[1] > 5 else min(2, df_raw.shape[1]-1)
+                    print(f"🔄 Usando Col {procedimento_col} para PROCEDIMENTO")
+                if valor_col is None:
+                    valor_col = min(10, df_raw.shape[1]-1)
+                    print(f"🔄 Usando Col {valor_col} para VALOR")
             
-            # Verificar se encontrou as 3 colunas essenciais
-            if len(colunas_mapeadas) < 3:
-                print("Não conseguiu mapear todas as colunas pelos nomes, usando posições fixas...")
-                
-                # Usar posições fixas baseadas na estrutura conhecida do IPG
-                if df.shape[1] >= 11:  # Precisa ter pelo menos 11 colunas
-                    df_normalizado = df.iloc[:, [0, 5, 10]].copy()
-                    df_normalizado.columns = ['Unidade', 'Procedimento', 'TotalItem']
-                    print("Usando posições fixas: coluna 0, 5, 10")
-                else:
-                    raise Exception(f"Arquivo não tem a estrutura esperada. Esperadas 11+ colunas, encontradas: {df.shape[1]}")
-            else:
-                # Usar as colunas mapeadas
-                cols_needed = ['Unidade', 'Procedimento', 'TotalItem']
-                missing_cols = [col for col in cols_needed if col not in colunas_mapeadas]
-                
-                if missing_cols:
-                    raise Exception(f"Colunas não encontradas: {missing_cols}. Colunas disponíveis: {list(df.columns)}")
-                
-                df_normalizado = df[[colunas_mapeadas[col] for col in cols_needed]].copy()
-                df_normalizado.columns = cols_needed
+            print(f"\n✅ COLUNAS FINAIS: Unidade=Col{unidade_col}, Procedimento=Col{procedimento_col}, Valor=Col{valor_col}")
             
-            print(f"Dados antes da limpeza: {len(df_normalizado)} registros")
+            # Extrair os dados usando as colunas identificadas
+            dados_extraidos = []
+            linhas_processadas = 0
             
-            # Mostrar amostra dos dados brutos
-            print("Amostra dos dados brutos:")
-            print(df_normalizado.head().to_string())
-            
-            # Limpeza dos dados
-            # 1. Remover linhas com valores nulos nas colunas essenciais
-            df_normalizado = df_normalizado.dropna(subset=['Procedimento', 'TotalItem'])
-            print(f"Após remover nulos: {len(df_normalizado)} registros")
-            
-            # 2. Remover linhas onde Procedimento está vazio
-            df_normalizado = df_normalizado[df_normalizado['Procedimento'].astype(str).str.strip() != '']
-            print(f"Após remover procedimentos vazios: {len(df_normalizado)} registros")
-            
-            # 3. Converter TotalItem para numérico
-            def converter_valor(valor):
-                if pd.isna(valor):
-                    return 0.0
+            print("\n=== EXTRAINDO DADOS ===")
+            for i in range(len(df_raw)):
                 try:
-                    # Se já for número, retornar
-                    if isinstance(valor, (int, float)):
-                        return float(valor)
+                    unidade = df_raw.iloc[i, unidade_col] if unidade_col < df_raw.shape[1] else None
+                    procedimento = df_raw.iloc[i, procedimento_col] if procedimento_col < df_raw.shape[1] else None
+                    valor = df_raw.iloc[i, valor_col] if valor_col < df_raw.shape[1] else None
                     
-                    # Se for string, limpar e converter
-                    valor_str = str(valor).strip()
-                    # Remover símbolos de moeda e espaços
-                    valor_str = valor_str.replace('R$', '').replace('$', '').replace(' ', '')
-                    # Trocar vírgula por ponto se necessário
-                    if ',' in valor_str and '.' not in valor_str:
-                        valor_str = valor_str.replace(',', '.')
+                    # Pular linhas de cabeçalho e vazias
+                    if (pd.isna(procedimento) or pd.isna(valor) or 
+                        str(procedimento).upper().strip() in ['PROCEDIMENTO', 'DESCRICAO', 'PROC', ''] or
+                        str(valor).upper().strip() in ['TOTAL', 'VALOR', 'VLR', '']):
+                        continue
                     
-                    return float(valor_str)
-                except:
-                    return 0.0
+                    # Limpar e validar dados
+                    unidade_clean = str(unidade).strip() if pd.notna(unidade) else "Não informado"
+                    procedimento_clean = str(procedimento).strip()
+                    
+                    # Converter valor
+                    valor_clean = self.converter_valor_robusto(valor)
+                    
+                    if len(procedimento_clean) > 3 and valor_clean > 0:
+                        dados_extraidos.append({
+                            'Unidade': unidade_clean,
+                            'Procedimento': procedimento_clean,
+                            'TotalItem': valor_clean
+                        })
+                        linhas_processadas += 1
+                        
+                        # Log das primeiras 5 linhas para debug
+                        if linhas_processadas <= 5:
+                            print(f"  Linha {i}: {unidade_clean[:20]}... | {procedimento_clean[:30]}... | R$ {valor_clean:,.2f}")
+                
+                except Exception as e:
+                    continue
             
-            df_normalizado['TotalItem'] = df_normalizado['TotalItem'].apply(converter_valor)
-            print(f"Valores convertidos - Min: {df_normalizado['TotalItem'].min()}, Max: {df_normalizado['TotalItem'].max()}")
+            if len(dados_extraidos) == 0:
+                raise Exception("Nenhum dado válido encontrado no arquivo")
             
-            # 4. Remover registros com valor zero ou negativo
-            df_normalizado = df_normalizado[df_normalizado['TotalItem'] > 0]
-            print(f"Após filtrar valores > 0: {len(df_normalizado)} registros")
+            # Criar DataFrame final
+            df_final = pd.DataFrame(dados_extraidos)
             
-            # 5. Limpar campo Unidade
-            df_normalizado['Unidade'] = df_normalizado['Unidade'].fillna('Não informado')
-            df_normalizado['Unidade'] = df_normalizado['Unidade'].astype(str).str.strip()
+            print(f"\n✅ PROCESSAMENTO CONCLUÍDO:")
+            print(f"   📊 Total de registros: {len(df_final)}")
+            print(f"   🏢 Unidades únicas: {df_final['Unidade'].nunique()}")
+            print(f"   📝 Procedimentos únicos: {df_final['Procedimento'].nunique()}")
+            print(f"   💰 Valor total: R$ {df_final['TotalItem'].sum():,.2f}")
             
-            # 6. Limpar campo Procedimento
-            df_normalizado['Procedimento'] = df_normalizado['Procedimento'].astype(str).str.strip()
+            # Mostrar amostra dos dados
+            print(f"\n📋 AMOSTRA DOS DADOS PROCESSADOS:")
+            print(df_final.head().to_string())
             
-            if len(df_normalizado) == 0:
-                raise Exception("Nenhum registro válido encontrado após o processamento")
-            
-            print(f"✅ Processamento concluído: {len(df_normalizado)} registros válidos")
-            
-            # Mostrar estatísticas finais
-            print(f"Unidades únicas: {df_normalizado['Unidade'].nunique()}")
-            print(f"Procedimentos únicos: {df_normalizado['Procedimento'].nunique()}")
-            print(f"Valor total: R$ {df_normalizado['TotalItem'].sum():,.2f}")
-            
-            # Mostrar amostra dos dados finais
-            print("\nAmostra dos dados processados:")
-            print(df_normalizado.head().to_string())
-            
-            return df_normalizado
+            return df_final
             
         except Exception as e:
-            print(f"❌ Erro detalhado no processamento: {e}")
-            print(f"Traceback: {traceback.format_exc()}")
+            print(f"❌ ERRO CRÍTICO no processamento: {e}")
+            print(f"Traceback completo: {traceback.format_exc()}")
             raise Exception(f"Erro ao processar arquivo de procedimentos: {e}")
 
+    def converter_valor_robusto(self, valor):
+        """Converte valores de forma mais robusta"""
+        if pd.isna(valor):
+            return 0.0
+        
+        try:
+            # Se já for número
+            if isinstance(valor, (int, float)):
+                return float(valor)
+            
+            # Se for string, limpar completamente
+            valor_str = str(valor).strip()
+            
+            # Remover todos os caracteres não numéricos exceto , e .
+            import re
+            valor_clean = re.sub(r'[^\d,.-]', '', valor_str)
+            
+            # Tratar vírgulas e pontos
+            if ',' in valor_clean and '.' in valor_clean:
+                # Formato: 1.234,56 -> 1234.56
+                if valor_clean.rfind(',') > valor_clean.rfind('.'):
+                    valor_clean = valor_clean.replace('.', '').replace(',', '.')
+                else:
+                    # Formato: 1,234.56 -> 1234.56
+                    valor_clean = valor_clean.replace(',', '')
+            elif ',' in valor_clean:
+                # Se só tem vírgula, assumir que é decimal
+                valor_clean = valor_clean.replace(',', '.')
+            
+            resultado = float(valor_clean)
+            return abs(resultado)  # Sempre positivo
+            
+        except Exception as e:
+            print(f"⚠️ Erro ao converter valor '{valor}': {e}")
+            return 0.0
+
     def mapear_procedimento_para_categoria(self, procedimento, categorias):
-        """Mapeia procedimento para categoria usando palavras-chave"""
+        """Mapeia procedimento para categoria de forma mais inteligente"""
         if not procedimento:
             return "Outros"
         
         proc_upper = str(procedimento).upper()
         
-        # Buscar correspondência com categorias
+        # Mapeamento específico primeiro
+        mapeamentos_especificos = {
+            'CONSULTA': 'CONSULTAS',
+            'EXAM': 'EXAMES',
+            'ULTRA': 'EXAMES',
+            'RAIO': 'EXAMES',
+            'TOMOGRAFIA': 'EXAMES',
+            'RESSONANCIA': 'EXAMES',
+            'SANGUE': 'EXAMES',
+            'VITAMINA': 'MEDICAMENTOS',
+            'MEDICAMENTO': 'MEDICAMENTOS',
+            'DIPIRONA': 'MEDICAMENTOS',
+            'CIRURGIA': 'PROCEDIMENTOS',
+            'PROCEDIMENTO': 'PROCEDIMENTOS'
+        }
+        
+        # Verificar mapeamentos específicos primeiro
+        for palavra_chave, categoria_destino in mapeamentos_especificos.items():
+            if palavra_chave in proc_upper:
+                return categoria_destino
+        
+        # Depois verificar as categorias fornecidas
         for categoria in categorias:
             cat_upper = str(categoria).upper().strip()
-            
-            # Verificar se a categoria está contida no procedimento
-            if cat_upper in proc_upper:
-                return categoria
-            
-            # Verificações específicas adicionais
-            if cat_upper == 'VITAMINA' and ('VITAMINA' in proc_upper or 'B12' in proc_upper):
-                return categoria
-            if cat_upper == 'CONSULTAS' and ('CONSULTA' in proc_upper):
+            if cat_upper and cat_upper in proc_upper:
                 return categoria
         
         return "Outros"
 
     def gerar_excel_procedimentos(self, categorias_gerais, procedimentos_detalhados, unidades_detalhadas, df):
-        """Gera Excel com relatório de procedimentos - Mesmo padrão do extrato"""
+        """Gera Excel com relatório de procedimentos"""
         try:
             wb = openpyxl.Workbook()
             wb.remove(wb.active)
@@ -530,12 +615,9 @@ class handler(BaseHTTPRequestHandler):
                 ])
             
             # === ABAS DETALHADAS POR CATEGORIA ===
-            
-            # Função para criar aba detalhada
             def criar_aba_categoria(resultado, prefixo=""):
                 categoria = resultado['categoria']
                 
-                # Nome da aba (máximo 31 caracteres, sem caracteres especiais)
                 nome_aba = f"{prefixo}{categoria}".replace('/', '-').replace('\\', '-').replace('*', '-')
                 nome_aba = nome_aba.replace('?', '').replace(':', '-').replace('[', '').replace(']', '')
                 nome_aba = nome_aba[:31]  # Limite do Excel
@@ -575,6 +657,28 @@ class handler(BaseHTTPRequestHandler):
             for resultado in categorias_gerais:
                 criar_aba_categoria(resultado)
             
+            # === ABA DADOS BRUTOS ===
+            ws_dados = wb.create_sheet("Dados Brutos")
+            ws_dados.append(["TODOS OS DADOS PROCESSADOS"])
+            ws_dados.append([])
+            ws_dados.append(["#", "Unidade", "Procedimento", "Categoria", "Valor"])
+            
+            for i, row in df.iterrows():
+                ws_dados.append([
+                    i + 1,
+                    row['Unidade'],
+                    row['Procedimento'],
+                    row['Categoria'],
+                    f"R$ {row['TotalItem']:,.2f}"
+                ])
+            
+            # Ajustar largura das colunas
+            ws_dados.column_dimensions['A'].width = 5
+            ws_dados.column_dimensions['B'].width = 25
+            ws_dados.column_dimensions['C'].width = 60
+            ws_dados.column_dimensions['D'].width = 20
+            ws_dados.column_dimensions['E'].width = 15
+            
             # Ajustar largura das colunas dos resumos
             for ws in [ws_resumo]:
                 ws.column_dimensions['A'].width = 25
@@ -597,8 +701,10 @@ class handler(BaseHTTPRequestHandler):
             wb.save(excel_buffer)
             excel_buffer.seek(0)
             
+            print(f"✅ Excel gerado com {len(wb.worksheets)} abas")
             return base64.b64encode(excel_buffer.getvalue()).decode()
             
         except Exception as e:
-            print(f"Erro ao gerar Excel de procedimentos: {e}")
+            print(f"❌ Erro ao gerar Excel: {e}")
+            print(f"Traceback: {traceback.format_exc()}")
             return None
