@@ -5,6 +5,7 @@ import io
 import base64
 import openpyxl
 import traceback
+import re # Importar a biblioteca re para expressões regulares
 
 class handler(BaseHTTPRequestHandler):
     def do_OPTIONS(self):
@@ -271,9 +272,10 @@ class handler(BaseHTTPRequestHandler):
                         # Log primeiras linhas
                         if linhas_processadas <= 5:
                             status = "GRATUITO" if valor_clean == 0 else f"R$ {valor_clean:,.2f}"
-                            print(f"  Linha {i}: {procedimento_clean[:40]}... | {status}")
+                            print(f"   Linha {i}: {procedimento_clean[:40]}... | {status}")
                 
                 except Exception as e:
+                    # print(f"Erro na linha {i}: {e}") # Descomente para depuração de linha
                     continue
             
             if len(dados_extraidos) == 0:
@@ -304,24 +306,41 @@ class handler(BaseHTTPRequestHandler):
         valor_col = None
         
         # Buscar por palavras-chave
-        for i in range(min(10, len(df_raw))):
-            for j in range(min(15, df_raw.shape[1])):
+        for i in range(min(10, len(df_raw))): # Limita a busca às primeiras 10 linhas
+            for j in range(min(15, df_raw.shape[1])): # Limita a busca às primeiras 15 colunas
                 cell_value = str(df_raw.iloc[i, j]).upper().strip() if pd.notna(df_raw.iloc[i, j]) else ""
                 
-                if ('UNIDADE' in cell_value or 'UNIT' in cell_value) and unidade_col is None:
+                if ('UNIDADE' in cell_value or 'UNIT' in cell_value or 'LOCAL' in cell_value) and unidade_col is None:
                     unidade_col = j
-                elif ('PROCEDIMENTO' in cell_value or 'PROC' in cell_value) and procedimento_col is None:
+                elif ('PROCEDIMENTO' in cell_value or 'PROC' in cell_value or 'DESCRICAO' in cell_value or 'ITEM' in cell_value) and procedimento_col is None:
                     procedimento_col = j
-                elif ('TOTAL' in cell_value and 'ITEM' in cell_value) and valor_col is None:
+                elif ('TOTAL' in cell_value and ('ITEM' in cell_value or 'VALOR' in cell_value)) and valor_col is None:
                     valor_col = j
         
-        # Fallback para posições conhecidas
+        # Fallback para posições conhecidas se não encontrado por palavras-chave
         if unidade_col is None:
-            unidade_col = 0
+            unidade_col = 0 # Assume a primeira coluna como unidade
         if procedimento_col is None:
-            procedimento_col = 5 if df_raw.shape[1] > 5 else min(2, df_raw.shape[1]-1)
+            procedimento_col = 1 # Assume a segunda coluna como procedimento
+            # Tenta encontrar uma coluna com mais strings longas, se houver mais de 2 colunas
+            if df_raw.shape[1] > 2:
+                potential_proc_cols = []
+                for j in range(df_raw.shape[1]):
+                    # Conta a média do comprimento das strings não vazias na coluna
+                    lengths = df_raw.iloc[:, j].dropna().astype(str).apply(len)
+                    if not lengths.empty and lengths.mean() > 10: # Heurística: colunas de procedimento costumam ter descrições mais longas
+                        potential_proc_cols.append((lengths.mean(), j))
+                if potential_proc_cols:
+                    procedimento_col = max(potential_proc_cols)[1] # Pega a coluna com maior média de comprimento
+        
         if valor_col is None:
-            valor_col = min(10, df_raw.shape[1]-1)
+            valor_col = df_raw.shape[1] - 1 # Assume a última coluna como valor
+            # Tenta encontrar uma coluna com valores numéricos predominantes
+            for j in range(df_raw.shape[1] -1, -1, -1): # Começa da direita para a esquerda
+                is_numeric_col = pd.to_numeric(df_raw.iloc[:, j], errors='coerce').notna().sum() / len(df_raw) > 0.5
+                if is_numeric_col:
+                    valor_col = j
+                    break
         
         return unidade_col, procedimento_col, valor_col
 
@@ -339,7 +358,6 @@ class handler(BaseHTTPRequestHandler):
                 return 0.0
             
             # Limpar caracteres não numéricos
-            import re
             valor_clean = re.sub(r'[^\d,.-]', '', valor_str)
             
             if not valor_clean:
@@ -357,6 +375,7 @@ class handler(BaseHTTPRequestHandler):
             return float(valor_clean)  # Retorna valor original (pode ser 0)
             
         except Exception as e:
+            # print(f"Erro ao converter valor '{valor}': {e}") # Descomente para depuração
             return 0.0
 
     def mapear_procedimento_para_categoria(self, procedimento, categorias):
@@ -374,7 +393,15 @@ class handler(BaseHTTPRequestHandler):
             'RAIO': 'EXAMES',
             'VITAMINA': 'MEDICAMENTOS',
             'MEDICAMENTO': 'MEDICAMENTOS',
-            'CIRURGIA': 'PROCEDIMENTOS'
+            'REMEDIO': 'MEDICAMENTOS', # Adicionado para melhor detecção de medicamentos
+            'FARMACIA': 'MEDICAMENTOS', # Adicionado para melhor detecção de medicamentos
+            'DROGA': 'MEDICAMENTOS', # Adicionado para melhor detecção de medicamentos
+            'COMPRIMIDO': 'MEDICAMENTOS', # Adicionado para melhor detecção de medicamentos
+            'INJECAO': 'MEDICAMENTOS', # Adicionado para melhor detecção de medicamentos
+            'VACINA': 'MEDICAMENTOS', # Adicionado para melhor detecção de medicamentos
+            'CIRURGIA': 'PROCEDIMENTOS',
+            'TERAPIA': 'PROCEDIMENTOS',
+            'FISIOTERAPIA': 'PROCEDIMENTOS'
         }
         
         for palavra, categoria in mapeamentos.items():
@@ -472,7 +499,7 @@ class handler(BaseHTTPRequestHandler):
         return categorias_detalhadas
 
     def gerar_excel_procedimentos(self, categorias_gerais, procedimentos_detalhados, unidades_detalhadas, df):
-        """Gera Excel completo incluindo procedimentos gratuitos"""
+        """Gera Excel completo incluindo procedimentos gratuitos e medicamentos por unidade"""
         try:
             wb = openpyxl.Workbook()
             wb.remove(wb.active)
@@ -493,7 +520,7 @@ class handler(BaseHTTPRequestHandler):
             ws_resumo.append(["Total de Procedimentos", total_procedimentos])
             ws_resumo.append(["Procedimentos Pagos", procedimentos_pagos])
             ws_resumo.append(["Procedimentos Gratuitos", procedimentos_gratuitos])
-            ws_resumo.append(["% Procedimentos Gratuitos", f"{(procedimentos_gratuitos/total_procedimentos)*100:.1f}%"])
+            ws_resumo.append(["% Procedimentos Gratuitos", f"{(procedimentos_gratuitos/total_procedimentos)*100:.1f}%" if total_procedimentos > 0 else "0.0%"])
             ws_resumo.append(["Valor Total (só pagos)", f"R$ {valor_total:,.2f}"])
             ws_resumo.append([])
             
@@ -549,6 +576,35 @@ class handler(BaseHTTPRequestHandler):
                     f"{cat_perc:.1f}%",
                     f"R$ {cat_valor:,.2f}"
                 ])
+
+            # MEDICAMENTOS POR UNIDADE (NOVA ABA)
+            print("Gerando aba 'Medicamentos por Unidade'...")
+            ws_medicamentos_unidade = wb.create_sheet("Medicamentos por Unidade")
+            ws_medicamentos_unidade.append(["MEDICAMENTOS POR UNIDADE"])
+            ws_medicamentos_unidade.append([f"Gerado em: {pd.Timestamp.now().strftime('%d/%m/%Y %H:%M')}"])
+            ws_medicamentos_unidade.append([])
+            ws_medicamentos_unidade.append(["Unidade", "Medicamento", "Quantidade", "Valor Total"])
+
+            # Filtrar apenas medicamentos
+            df_medicamentos = df[df['Categoria'] == 'MEDICAMENTOS']
+
+            if not df_medicamentos.empty:
+                # Agrupar por Unidade e Procedimento (Medicamento)
+                medicamentos_por_unidade = df_medicamentos.groupby(['Unidade', 'Procedimento']).agg(
+                    quantidade=('Procedimento', 'count'),
+                    valor_total=('TotalItem', 'sum')
+                ).reset_index()
+
+                # Iterar e adicionar ao Excel
+                for _, row in medicamentos_por_unidade.iterrows():
+                    ws_medicamentos_unidade.append([
+                        row['Unidade'],
+                        row['Procedimento'],
+                        int(row['quantidade']),
+                        f"R$ {row['valor_total']:,.2f}"
+                    ])
+            else:
+                ws_medicamentos_unidade.append(["Nenhum medicamento encontrado para esta análise."])
             
             # Ajustar larguras
             ws_resumo.column_dimensions['A'].width = 25
@@ -567,6 +623,11 @@ class handler(BaseHTTPRequestHandler):
             ws_stats.column_dimensions['D'].width = 10
             ws_stats.column_dimensions['E'].width = 12
             ws_stats.column_dimensions['F'].width = 15
+
+            ws_medicamentos_unidade.column_dimensions['A'].width = 25
+            ws_medicamentos_unidade.column_dimensions['B'].width = 60
+            ws_medicamentos_unidade.column_dimensions['C'].width = 12
+            ws_medicamentos_unidade.column_dimensions['D'].width = 15
             
             # Salvar
             excel_buffer = io.BytesIO()
