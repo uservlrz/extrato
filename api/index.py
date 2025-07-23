@@ -26,13 +26,10 @@ class handler(BaseHTTPRequestHandler):
     
     def do_POST(self):
         try:
-            # Verificar se é endpoint de procedimentos
-            if self.path == '/api/procedures':
-                return self.processar_procedimentos()
+            print("=== INICIANDO PROCESSAMENTO ===")
+            print(f"Path: {self.path}")
             
-            # Código original para extratos
-            print("=== INICIANDO PROCESSAMENTO EXTRATOS ===")
-            
+            # Ler dados do POST
             content_length = int(self.headers.get('Content-Length', 0))
             post_data = self.rfile.read(content_length)
             print(f"Dados recebidos: {len(post_data)} bytes")
@@ -48,11 +45,19 @@ class handler(BaseHTTPRequestHandler):
             print(f"Arquivos encontrados: {list(files.keys())}")
             print(f"Dados do formulário: {list(form_data.keys())}")
             
+            # CORREÇÃO: Verificar se é endpoint de procedimentos através do form_data
+            action = form_data.get('action', '')
+            if self.path == '/api/procedures' or action == 'procedures':
+                return self.processar_procedimentos(files, form_data)
+            
+            # Código original para extratos
+            print("Processando extratos bancários...")
+            
             csv_data = files.get('csv_file')
             excel_data = files.get('excel_file')
             
             if not csv_data or not excel_data:
-                raise Exception("Arquivos necessários não foram enviados")
+                raise Exception("Arquivos CSV e Excel são necessários para análise de extratos")
             
             print(f"CSV: {len(csv_data)} bytes")
             print(f"Excel: {len(excel_data)} bytes")
@@ -211,23 +216,21 @@ class handler(BaseHTTPRequestHandler):
             }
             self.wfile.write(json.dumps(error_response).encode())
     
-    def processar_procedimentos(self):
+    def processar_procedimentos(self, files, form_data):
         """Processa dados de procedimentos médicos"""
         try:
             print("=== PROCESSANDO PROCEDIMENTOS MÉDICOS ===")
             
-            content_length = int(self.headers.get('Content-Length', 0))
-            post_data = self.rfile.read(content_length)
-            
-            content_type = self.headers.get('Content-Type', '')
-            boundary = content_type.split('boundary=')[1]
-            
-            files, form_data = self.parse_multipart(post_data, boundary)
+            # O frontend já especifica os nomes dos arquivos
             procedures_data = files.get('procedures_file')
             categories_data = files.get('categories_file')
             
             if not procedures_data or not categories_data:
-                raise Exception("Ambos os arquivos (procedimentos e categorias) são necessários")
+                available_files = list(files.keys())
+                raise Exception(f"Arquivos necessários não encontrados. Esperado: 'procedures_file' e 'categories_file'. Recebidos: {available_files}")
+            
+            print(f"Procedimentos: {len(procedures_data)} bytes")
+            print(f"Categorias: {len(categories_data)} bytes")
             
             # Processar arquivos
             categorias = self.processar_arquivo_categorias(categories_data)
@@ -253,29 +256,41 @@ class handler(BaseHTTPRequestHandler):
             self.send_header('Access-Control-Allow-Origin', '*')
             self.end_headers()
             self.wfile.write(json.dumps(resposta).encode())
+            print("=== PROCEDIMENTOS PROCESSADOS COM SUCESSO ===")
             
         except Exception as e:
             print(f"Erro nos procedimentos: {e}")
+            print(f"Traceback completo: {traceback.format_exc()}")
+            
             self.send_response(500)
             self.send_header('Content-Type', 'application/json')
             self.send_header('Access-Control-Allow-Origin', '*')
             self.end_headers()
             
-            error_response = {'success': False, 'error': str(e)}
+            error_response = {
+                'success': False, 
+                'error': str(e),
+                'traceback': traceback.format_exc()
+            }
             self.wfile.write(json.dumps(error_response).encode())
 
     def processar_arquivo_categorias(self, categories_data):
         """Processa arquivo Excel de categorias"""
         try:
+            print("Processando arquivo de categorias...")
             df = pd.read_excel(io.BytesIO(categories_data))
+            print(f"Arquivo de categorias carregado: {df.shape}")
+            print(f"Colunas: {df.columns.tolist()}")
             
             # Extrair lista de categorias da primeira coluna
             categorias = []
             for _, row in df.iterrows():
                 if pd.notna(row.iloc[0]) and str(row.iloc[0]).strip():
-                    categorias.append(str(row.iloc[0]).strip())
+                    categoria = str(row.iloc[0]).strip()
+                    categorias.append(categoria)
+                    print(f"Categoria encontrada: {categoria}")
             
-            print(f"Categorias carregadas: {categorias}")
+            print(f"Total de categorias carregadas: {len(categorias)}")
             return categorias
             
         except Exception as e:
@@ -284,40 +299,67 @@ class handler(BaseHTTPRequestHandler):
     def processar_arquivo_procedimentos(self, procedures_data):
         """Processa arquivo Excel de procedimentos"""
         try:
+            print("Processando arquivo de procedimentos...")
             df = pd.read_excel(io.BytesIO(procedures_data))
-            
+            print(f"Arquivo de procedimentos carregado: {df.shape}")
             print(f"Colunas disponíveis: {df.columns.tolist()}")
             
-            # Verificar se tem as colunas necessárias
-            colunas_necessarias = ['Unidade', 'Procedimento', 'Total do Item']
+            # Verificar se tem as colunas necessárias (busca flexível)
+            colunas_necessarias = ['Unidade', 'Procedimento', 'Total']
             colunas_encontradas = []
             
             for col_necessaria in colunas_necessarias:
                 col_encontrada = None
                 for col_original in df.columns:
-                    if col_necessaria.lower() in col_original.lower():
-                        col_encontrada = col_original
-                        break
+                    col_lower = col_original.lower().strip()
+                    
+                    if col_necessaria.lower() == 'unidade':
+                        if 'unidade' in col_lower or 'unit' in col_lower:
+                            col_encontrada = col_original
+                            break
+                    elif col_necessaria.lower() == 'procedimento':
+                        if 'procedimento' in col_lower or 'proc' in col_lower or 'procedure' in col_lower or 'descri' in col_lower:
+                            col_encontrada = col_original
+                            break
+                    elif col_necessaria.lower() == 'total':
+                        if 'total' in col_lower or 'valor' in col_lower or 'amount' in col_lower:
+                            col_encontrada = col_original
+                            break
                 
                 if col_encontrada:
                     colunas_encontradas.append(col_encontrada)
+                    print(f"Coluna '{col_necessaria}' mapeada para '{col_encontrada}'")
                 else:
-                    raise Exception(f"Coluna '{col_necessaria}' não encontrada no arquivo")
+                    raise Exception(f"Coluna '{col_necessaria}' não encontrada no arquivo. Colunas disponíveis: {df.columns.tolist()}")
             
             # Renomear colunas para padrão
             df_normalizado = df[colunas_encontradas].copy()
             df_normalizado.columns = ['Unidade', 'Procedimento', 'TotalItem']
             
+            print(f"Dados antes da limpeza: {len(df_normalizado)} registros")
+            
             # Limpar dados
             df_normalizado = df_normalizado.dropna(subset=['Procedimento', 'TotalItem'])
+            print(f"Após remover nulos: {len(df_normalizado)} registros")
+            
+            # Converter coluna TotalItem para numérico
             df_normalizado['TotalItem'] = pd.to_numeric(df_normalizado['TotalItem'], errors='coerce')
             df_normalizado = df_normalizado.dropna(subset=['TotalItem'])
+            print(f"Após conversão numérica: {len(df_normalizado)} registros")
+            
             df_normalizado = df_normalizado[df_normalizado['TotalItem'] > 0]
+            print(f"Após filtrar valores > 0: {len(df_normalizado)} registros")
             
             # Garantir que Unidade não seja nula
             df_normalizado['Unidade'] = df_normalizado['Unidade'].fillna('Não informado')
             
-            print(f"Registros processados: {len(df_normalizado)}")
+            print(f"Registros finais processados: {len(df_normalizado)}")
+            
+            # Mostrar amostra dos dados
+            if len(df_normalizado) > 0:
+                print("Amostra dos dados processados:")
+                print(df_normalizado.head().to_string())
+            
             return df_normalizado
             
         except Exception as e:
@@ -351,10 +393,15 @@ class handler(BaseHTTPRequestHandler):
         try:
             print("Iniciando análise de procedimentos...")
             
+            if len(df) == 0:
+                raise Exception("Nenhum dado de procedimento válido para analisar")
+            
             # Adicionar categoria a cada procedimento
             df['Categoria'] = df['Procedimento'].apply(
                 lambda x: self.mapear_procedimento_para_categoria(x, categorias)
             )
+            
+            print(f"Categorização concluída. Categorias únicas encontradas: {df['Categoria'].unique()}")
             
             # === ANÁLISE POR PROCEDIMENTO ===
             procedimentos_agrupados = df.groupby('Procedimento').agg({
@@ -464,6 +511,8 @@ class handler(BaseHTTPRequestHandler):
                 'valor_total': float(total_geral),
                 'total_unidades': len(unidades_agrupadas)
             }
+            
+            print(f"Análise concluída: {estatisticas}")
             
             return {
                 'estatisticas': estatisticas,
