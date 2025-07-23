@@ -551,7 +551,7 @@
             formData.append('excel_file', excelFile);
 
             try {
-                const response = await fetch('/api', {
+                const response = await fetch('/api/procedures', {
                     method: 'POST',
                     body: formData
                 });
