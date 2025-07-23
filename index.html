@@ -275,18 +275,6 @@
             padding: 20px;
         }
 
-        .debug-info {
-            background: #f8f9fa;
-            border: 1px solid #ddd;
-            padding: 15px;
-            margin: 10px 0;
-            border-radius: 4px;
-            font-family: monospace;
-            font-size: 12px;
-            max-height: 200px;
-            overflow-y: auto;
-        }
-
         @media (max-width: 768px) {
             .main-tabs {
                 padding: 15px;
@@ -348,7 +336,6 @@
                 <button onclick="processFiles()" id="processBtn" disabled>Analisar Completo</button>
                 <button onclick="downloadResults()" id="downloadBtn" disabled>Baixar Excel</button>
                 <button onclick="resetForm()">Limpar</button>
-                <button onclick="processOffline()" id="offlineBtn">Processar Offline</button>
             </div>
 
             <div id="processingStatus"></div>
@@ -526,7 +513,7 @@
             }).format(value);
         }
 
-        // FUNÇÕES DE EXTRATOS (corrigidas)
+        // FUNÇÕES DE EXTRATOS
         function handleFileSelect(event, type) {
             const file = event.target.files[0];
             const statusDiv = document.getElementById(type + 'Status');
@@ -550,7 +537,6 @@
             }
         }
 
-        // Função principal corrigida para extratos
         async function processFiles() {
             if (!csvFile || !excelFile) {
                 showError('Carregue ambos os arquivos primeiro.');
@@ -565,23 +551,25 @@
             formData.append('excel_file', excelFile);
 
             try {
-                // Endpoint correto para extratos
+                console.log("📤 Enviando extratos para: /api/extratos");
+                console.log("📁 Arquivos:", csvFile.name, excelFile.name);
+
                 const response = await fetch('/api/extratos', {
                     method: 'POST',
                     body: formData
                 });
 
+                console.log("📥 Response status:", response.status);
+                console.log("📥 Response ok:", response.ok);
+
                 if (!response.ok) {
-                    // Se o endpoint /api/extratos não existir, tenta processar offline
-                    if (response.status === 404) {
-                        updateProcessingStatus('Endpoint não encontrado. Tentando processamento offline...', 'status');
-                        await processOffline();
-                        return;
-                    }
+                    const errorText = await response.text();
+                    console.error("❌ Erro da resposta:", errorText);
                     throw new Error(`Erro ${response.status}: ${response.statusText}`);
                 }
 
                 const data = await response.json();
+                console.log("✅ Dados de extratos recebidos:", data);
                 
                 if (data.success) {
                     updateProcessingStatus('Extratos processados com sucesso!', 'success');
@@ -591,166 +579,11 @@
                 }
 
             } catch (error) {
-                updateProcessingStatus(`Erro: ${error.message}. Tentando processamento offline...`, 'error');
-                // Fallback para processamento offline
-                setTimeout(() => processOffline(), 2000);
+                console.error("💥 Erro no processamento de extratos:", error);
+                updateProcessingStatus(`Erro: ${error.message}`, 'error');
             } finally {
                 showLoading(false);
             }
-        }
-
-        // Função de processamento offline para extratos
-        async function processOffline() {
-            if (!csvFile || !excelFile) {
-                showError('Carregue ambos os arquivos primeiro.');
-                return;
-            }
-
-            showLoading(true);
-            updateProcessingStatus('Processando arquivos localmente...', 'status');
-
-            try {
-                // Ler arquivos
-                const csvText = await readFileAsText(csvFile);
-                const excelArrayBuffer = await readFileAsArrayBuffer(excelFile);
-
-                updateProcessingStatus('Analisando dados...', 'status');
-
-                // Processar CSV
-                const csvLines = csvText.split('\n').filter(line => line.trim());
-                const headers = csvLines[0].split(',').map(h => h.trim().replace(/"/g, ''));
-                
-                console.log('Headers encontrados:', headers);
-
-                const transactions = [];
-                for (let i = 1; i < csvLines.length; i++) {
-                    const values = csvLines[i].split(',').map(v => v.trim().replace(/"/g, ''));
-                    if (values.length >= headers.length && values[0]) {
-                        const transaction = {};
-                        headers.forEach((header, index) => {
-                            transaction[header] = values[index] || '';
-                        });
-                        
-                        // Processar valor
-                        const valueField = headers.find(h => 
-                            h.toLowerCase().includes('valor') || 
-                            h.toLowerCase().includes('amount') ||
-                            h.toLowerCase().includes('total')
-                        );
-                        
-                        if (valueField && transaction[valueField]) {
-                            transaction.valor_numerico = parseFloat(
-                                transaction[valueField]
-                                    .replace(/[^\d,-]/g, '')
-                                    .replace(',', '.')
-                            ) || 0;
-                        }
-
-                        transactions.push(transaction);
-                    }
-                }
-
-                // Análise simples
-                const credits = transactions.filter(t => t.valor_numerico > 0);
-                const debits = transactions.filter(t => t.valor_numerico < 0);
-                
-                const totalCredits = credits.reduce((sum, t) => sum + t.valor_numerico, 0);
-                const totalDebits = Math.abs(debits.reduce((sum, t) => sum + t.valor_numerico, 0));
-
-                // Criar resultado simplificado
-                const mockResult = {
-                    success: true,
-                    estatisticas: {
-                        total_transacoes: transactions.length,
-                        total_creditos: credits.length,
-                        total_debitos: debits.length,
-                        valor_total_creditos: totalCredits,
-                        valor_total_debitos: totalDebits
-                    },
-                    categorias_gerais: [
-                        {
-                            categoria: 'Créditos Gerais',
-                            total: totalCredits,
-                            quantidade: credits.length,
-                            percentual: (credits.length / transactions.length) * 100,
-                            itens: credits.slice(0, 10).map(t => ({
-                                descricao: t.Histórico || t.Descrição || t.Description || 'Sem descrição',
-                                valor: t.valor_numerico,
-                                data: t.Data || t.Date || '',
-                                tipo: 'C'
-                            }))
-                        },
-                        {
-                            categoria: 'Débitos Gerais',
-                            total: -totalDebits,
-                            quantidade: debits.length,
-                            percentual: (debits.length / transactions.length) * 100,
-                            itens: debits.slice(0, 10).map(t => ({
-                                descricao: t.Histórico || t.Descrição || t.Description || 'Sem descrição',
-                                valor: t.valor_numerico,
-                                data: t.Data || t.Date || '',
-                                tipo: 'D'
-                            }))
-                        }
-                    ],
-                    categorias_creditos: [
-                        {
-                            categoria: 'Créditos',
-                            total: totalCredits,
-                            quantidade: credits.length,
-                            percentual: 100,
-                            itens: credits.slice(0, 20).map(t => ({
-                                descricao: t.Histórico || t.Descrição || t.Description || 'Sem descrição',
-                                valor: t.valor_numerico,
-                                data: t.Data || t.Date || '',
-                                tipo: 'C'
-                            }))
-                        }
-                    ],
-                    categorias_debitos: [
-                        {
-                            categoria: 'Débitos',
-                            total: -totalDebits,
-                            quantidade: debits.length,
-                            percentual: 100,
-                            itens: debits.slice(0, 20).map(t => ({
-                                descricao: t.Histórico || t.Descrição || t.Description || 'Sem descrição',
-                                valor: t.valor_numerico,
-                                data: t.Data || t.Date || '',
-                                tipo: 'D'
-                            }))
-                        }
-                    ]
-                };
-
-                updateProcessingStatus('Processamento offline concluído!', 'success');
-                displayResults(mockResult);
-
-            } catch (error) {
-                updateProcessingStatus(`Erro no processamento offline: ${error.message}`, 'error');
-                console.error('Erro detalhado:', error);
-            } finally {
-                showLoading(false);
-            }
-        }
-
-        // Funções auxiliares para leitura de arquivos
-        function readFileAsText(file) {
-            return new Promise((resolve, reject) => {
-                const reader = new FileReader();
-                reader.onload = (e) => resolve(e.target.result);
-                reader.onerror = reject;
-                reader.readAsText(file);
-            });
-        }
-
-        function readFileAsArrayBuffer(file) {
-            return new Promise((resolve, reject) => {
-                const reader = new FileReader();
-                reader.onload = (e) => resolve(e.target.result);
-                reader.onerror = reject;
-                reader.readAsArrayBuffer(file);
-            });
         }
 
         function updateProcessingStatus(message, type) {
@@ -962,7 +795,7 @@
             showSection('geral');
         }
 
-        // FUNÇÕES DE PROCEDIMENTOS MÉDICOS (mantidas originais)
+        // FUNÇÕES DE PROCEDIMENTOS MÉDICOS
         function handleMedicationFileSelect(event) {
             const file = event.target.files[0];
             const statusDiv = document.getElementById('medicationFileStatus');
@@ -1007,11 +840,11 @@
             formData.append('procedures_file', medicationFile);
             formData.append('categories_file', categoriesFile);
 
-            console.log("📤 Enviando para: /api/procedures");
+            console.log("📤 Enviando procedimentos para: /api/procedimentos");
             console.log("📁 Arquivos:", medicationFile.name, categoriesFile.name);
 
             try {
-                const response = await fetch('/api/procedures', {
+                const response = await fetch('/api/procedimentos', {
                     method: 'POST',
                     body: formData
                 });
@@ -1026,7 +859,7 @@
                 }
 
                 const data = await response.json();
-                console.log("✅ Dados recebidos:", data);
+                console.log("✅ Dados de procedimentos recebidos:", data);
                 
                 if (data.success) {
                     updateMedicationProcessingStatus('Dados processados com sucesso!', 'success');
@@ -1036,7 +869,7 @@
                 }
 
             } catch (error) {
-                console.error("💥 Erro completo:", error);
+                console.error("💥 Erro no processamento de procedimentos:", error);
                 updateMedicationProcessingStatus(`Erro: ${error.message}`, 'error');
             } finally {
                 showMedicationLoading(false);
