@@ -19,7 +19,7 @@ class handler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header('Content-Type', 'application/json')
         self.send_header('Access-Control-Allow-Origin', '*')
-        self.end_headers()
+        self.end_header()
         
         response = {'status': 'OK', 'message': 'API de Procedimentos funcionando!'}
         self.wfile.write(json.dumps(response).encode())
@@ -499,7 +499,7 @@ class handler(BaseHTTPRequestHandler):
         return categorias_detalhadas
 
     def gerar_excel_procedimentos(self, categorias_gerais, procedimentos_detalhados, unidades_detalhadas, df):
-        """Gera Excel completo incluindo procedimentos gratuitos e medicamentos por unidade"""
+        """Gera Excel completo incluindo procedimentos gratuitos, medicamentos por unidade e categorias por unidade"""
         try:
             wb = openpyxl.Workbook()
             wb.remove(wb.active)
@@ -605,6 +605,29 @@ class handler(BaseHTTPRequestHandler):
                     ])
             else:
                 ws_medicamentos_unidade.append(["Nenhum medicamento encontrado para esta análise."])
+
+            # CATEGORIAS POR UNIDADE (NOVA ABA)
+            print("Gerando aba 'Categorias por Unidade'...")
+            ws_categorias_unidade = wb.create_sheet("Categorias por Unidade")
+            ws_categorias_unidade.append(["CATEGORIAS POR UNIDADE"])
+            ws_categorias_unidade.append([f"Gerado em: {pd.Timestamp.now().strftime('%d/%m/%Y %H:%M')}"])
+            ws_categorias_unidade.append([])
+            ws_categorias_unidade.append(["Unidade", "Categoria", "Quantidade", "Valor Total"])
+
+            # Agrupar por Unidade e Categoria
+            categorias_por_unidade = df.groupby(['Unidade', 'Categoria']).agg(
+                quantidade=('Categoria', 'count'),
+                valor_total=('TotalItem', 'sum')
+            ).reset_index()
+
+            # Iterar e adicionar ao Excel
+            for _, row in categorias_por_unidade.iterrows():
+                ws_categorias_unidade.append([
+                    row['Unidade'],
+                    row['Categoria'],
+                    int(row['quantidade']),
+                    f"R$ {row['valor_total']:,.2f}"
+                ])
             
             # Ajustar larguras
             ws_resumo.column_dimensions['A'].width = 25
@@ -628,6 +651,11 @@ class handler(BaseHTTPRequestHandler):
             ws_medicamentos_unidade.column_dimensions['B'].width = 60
             ws_medicamentos_unidade.column_dimensions['C'].width = 12
             ws_medicamentos_unidade.column_dimensions['D'].width = 15
+
+            ws_categorias_unidade.column_dimensions['A'].width = 25
+            ws_categorias_unidade.column_dimensions['B'].width = 25
+            ws_categorias_unidade.column_dimensions['C'].width = 12
+            ws_categorias_unidade.column_dimensions['D'].width = 15
             
             # Salvar
             excel_buffer = io.BytesIO()
