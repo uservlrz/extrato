@@ -142,22 +142,40 @@ class handler(BaseHTTPRequestHandler):
         if pd.isna(valor) or valor == '' or valor is None:
             return 0.0
         
-        valor_str = str(valor).strip().replace('"', '')
+        # Converter para string e limpar espaços
+        valor_str = str(valor).strip()
         if not valor_str or valor_str.lower() == 'nan':
             return 0.0
         
-        # Tratar valores negativos
-        negativo = valor_str.startswith('-')
-        if negativo:
-            valor_str = valor_str[1:]
+        # Remover aspas se houver
+        valor_str = valor_str.replace('"', '').replace("'", "")
+        
+        # Se está vazio após limpeza
+        if not valor_str:
+            return 0.0
+        
+        # Tratar valores negativos (podem vir com hífen ou entre aspas negativas)
+        negativo = False
+        if valor_str.startswith('-') or valor_str.startswith('"-'):
+            negativo = True
+            valor_str = valor_str.lstrip('-').lstrip('"').rstrip('"')
         
         # Formato brasileiro: remover pontos (milhares) e trocar vírgula por ponto
-        valor_str = valor_str.replace('.', '').replace(',', '.')
+        # Exemplo: "1.234,56" -> "1234.56"
+        if ',' in valor_str and '.' in valor_str:
+            # Se tem ambos, ponto é milhares e vírgula é decimal
+            valor_str = valor_str.replace('.', '').replace(',', '.')
+        elif ',' in valor_str:
+            # Só vírgula, é decimal
+            valor_str = valor_str.replace(',', '.')
+        # Se só tem ponto, assumir que é decimal (formato americano ou sem milhares)
         
         try:
             resultado = float(valor_str)
+            # Aplicar sinal negativo se necessário
             return -resultado if negativo else resultado
-        except:
+        except ValueError as e:
+            print(f"Erro ao processar valor '{valor}' -> '{valor_str}': {e}")
             return 0.0
 
     # ==========================================
@@ -235,34 +253,76 @@ class handler(BaseHTTPRequestHandler):
 
     def detectar_formato_bradesco(self, csv_string):
         """Detecta se é Bradesco NOVO ou ANTIGO"""
-        linhas = csv_string.split('\n')[:10]
+        print("=== DETECTANDO FORMATO BRADESCO (NOVO vs ANTIGO) ===")
+        
+        linhas = csv_string.split('\n')[:15]  # Analisar mais linhas
         
         score_novo = 0
         score_antigo = 0
         
-        for linha in linhas:
-            # Formato NOVO: cabeçalho específico e linhas organizadas
-            if 'Data;Histórico;Docto.' in linha or 'Data;Historico;Docto.' in linha:
-                score_novo += 5
-            
-            # Formato NOVO: transações em linhas separadas, poucos \r
-            if re.match(r'^\d{2}/\d{2}/\d{2,4};', linha) and linha.count('\r') <= 1:
-                score_novo += 2
-            
-            # Formato ANTIGO: dados aglomerados com muitos \r
-            if linha.count('\r') > 10 and ';' in linha:
-                score_antigo += 3
-            
-            # Formato ANTIGO: cabeçalho específico
-            if 'Data;Lançamento;Dcto.' in linha:
-                score_antigo += 3
-            
-            # Formato ANTIGO: muitos campos na mesma linha
-            if linha.count(';') > 20:
-                score_antigo += 2
+        # Debug: mostrar primeiras linhas
+        print("Primeiras linhas para análise:")
+        for i, linha in enumerate(linhas[:5]):
+            print(f"  {i}: {linha[:100]}...")
         
-        print(f"Formato Bradesco - Novo: {score_novo}, Antigo: {score_antigo}")
-        return 'novo' if score_novo > score_antigo else 'antigo'
+        for i, linha in enumerate(linhas):
+            linha_upper = linha.upper()
+            
+            # ===== INDICADORES FORMATO NOVO =====
+            
+            # Cabeçalho específico do novo
+            if 'DATA;HISTÓRICO;DOCTO.' in linha_upper or 'DATA;HISTORICO;DOCTO.' in linha_upper:
+                score_novo += 10
+                print(f"NOVO +10 linha {i}: cabeçalho novo detectado")
+            
+            # Extrato header do novo (mais específico)
+            if 'EXTRATO DE: AG:' in linha_upper and 'CONTA:' in linha_upper and 'ENTRE' in linha_upper:
+                score_novo += 5
+                print(f"NOVO +5 linha {i}: header novo detectado")
+            
+            # Transações organizadas (formato novo)
+            if re.match(r'^\d{2}/\d{2}/\d{2,4};[^;]+;\d*;', linha):
+                if linha.count('\r') <= 1:  # Poucos \r
+                    score_novo += 3
+                    print(f"NOVO +3 linha {i}: transação organizada")
+            
+            # Seção "Últimos Lançamentos" (específico do novo)
+            if 'ÚLTIMOS LANÇAMENTOS' in linha_upper:
+                score_novo += 3
+                print(f"NOVO +3 linha {i}: seção últimos lançamentos")
+            
+            # ===== INDICADORES FORMATO ANTIGO =====
+            
+            # Cabeçalho específico do antigo
+            if 'DATA;LANÇAMENTO;DCTO.' in linha_upper or 'DATA;LANCAMENTO;DCTO.' in linha_upper:
+                score_antigo += 8
+                print(f"ANTIGO +8 linha {i}: cabeçalho antigo detectado")
+            
+            # Dados aglomerados com muitos \r (característico do antigo)
+            if linha.count('\r') > 15 and ';' in linha:
+                score_antigo += 5
+                print(f"ANTIGO +5 linha {i}: muitos \\r ({linha.count('\\r')})")
+            
+            # Uma linha muito longa com muitos campos (formato antigo)
+            if linha.count(';') > 30:
+                score_antigo += 4
+                print(f"ANTIGO +4 linha {i}: muitos campos ({linha.count(';')})")
+            
+            # Header de agência diferente (formato antigo)
+            if 'AGÊNCIA:' in linha_upper and 'CONTA:' in linha_upper and 'EXTRATO DE:' in linha_upper:
+                if 'AG:' not in linha_upper:  # Diferente do novo
+                    score_antigo += 3
+                    print(f"ANTIGO +3 linha {i}: header antigo")
+        
+        print(f"SCORES FINAIS - Novo: {score_novo}, Antigo: {score_antigo}")
+        
+        # Critério mais rigoroso para novo
+        if score_novo >= score_antigo and score_novo >= 5:
+            print("FORMATO BRADESCO NOVO DETECTADO")
+            return 'novo'
+        else:
+            print("FORMATO BRADESCO ANTIGO DETECTADO")
+            return 'antigo'
 
     # ==========================================
     # PROCESSAMENTO CSV
@@ -310,57 +370,151 @@ class handler(BaseHTTPRequestHandler):
 
     def processar_bradesco_novo(self, csv_string):
         """Processa formato NOVO do Bradesco"""
-        print("=== PROCESSANDO BRADESCO NOVO ===")
+        print("=== PROCESSANDO BRADESCO FORMATO NOVO ===")
         
         linhas = csv_string.split('\n')
+        print(f"Total de linhas no arquivo: {len(linhas)}")
         
-        # Encontrar cabeçalho
+        # Debug: mostrar estrutura do arquivo
+        print("Estrutura do arquivo:")
+        for i, linha in enumerate(linhas[:10]):
+            print(f"  {i}: {linha[:80]}...")
+        
+        # Encontrar cabeçalho - ser mais flexível
         header_line = -1
+        cabecalho_encontrado = None
+        
         for i, linha in enumerate(linhas):
-            if 'Data;Histórico;Docto.' in linha or 'Data;Historico;Docto.' in linha:
+            # Procurar por diferentes variações do cabeçalho
+            if any(cab in linha for cab in [
+                'Data;Histórico;Docto.',
+                'Data;Historico;Docto.',
+                'Data;Histórico;Docto;',
+                'Data;Historico;Docto;'
+            ]):
                 header_line = i
+                cabecalho_encontrado = linha.strip()
+                print(f"Cabeçalho encontrado na linha {i}: {cabecalho_encontrado}")
                 break
         
         if header_line == -1:
-            raise Exception("Cabeçalho não encontrado no formato novo")
+            # Tentar busca mais ampla
+            for i, linha in enumerate(linhas):
+                if 'Data;' in linha and ('Histórico' in linha or 'Historico' in linha):
+                    header_line = i
+                    cabecalho_encontrado = linha.strip()
+                    print(f"Cabeçalho alternativo encontrado na linha {i}: {cabecalho_encontrado}")
+                    break
         
-        # Extrair dados
-        cabecalho = linhas[header_line].strip()
+        if header_line == -1:
+            raise Exception("Cabeçalho não encontrado no formato novo. Verifique se o arquivo está correto.")
+        
+        # Extrair linhas de dados após o cabeçalho
         linhas_dados = []
+        secao_atual = "principal"
+        
+        print(f"Processando linhas a partir da linha {header_line + 1}...")
         
         for i in range(header_line + 1, len(linhas)):
             linha = linhas[i].strip()
             
-            # Filtrar linhas válidas
-            if (linha and 
-                not any(x in linha.upper() for x in ['SALDO ANTERIOR', 'TOTAL;', 'OS DADOS ACIMA', 'ÚLTIMOS LANÇAMENTOS']) and
-                re.match(r'^\d{2}/\d{2}/\d{2,4};', linha) and
-                linha.count(';') >= 4):
+            if not linha:  # Pular linhas vazias
+                continue
+            
+            # Detectar seções especiais
+            if 'Últimos Lançamentos' in linha or 'ÚLTIMOS LANÇAMENTOS' in linha:
+                print(f"Seção 'Últimos Lançamentos' detectada na linha {i}")
+                secao_atual = "ultimos"
+                continue
+            
+            if 'Os dados acima' in linha:
+                print(f"Fim dos dados detectado na linha {i}")
+                break
+            
+            # Filtrar linhas que não são dados
+            if any(x in linha.upper() for x in [
+                'SALDO ANTERIOR', 
+                'TOTAL;', 
+                'SALDOS INVEST FÁCIL',
+                'DATA;HISTÓRICO;VALOR'  # Cabeçalho de seção especial
+            ]):
+                print(f"Linha ignorada (controle): {linha[:50]}...")
+                continue
+            
+            # Verificar se é uma linha de dados válida
+            # Formato esperado: DD/MM/YY;Descrição;Documento;Valor1;Valor2;Saldo
+            if re.match(r'^\d{2}/\d{2}/\d{2,4};', linha) and linha.count(';') >= 4:
                 linhas_dados.append(linha)
+                
+                # Debug: mostrar primeiras 5 linhas válidas
+                if len(linhas_dados) <= 5:
+                    print(f"Linha dados {len(linhas_dados)}: {linha[:80]}...")
+            else:
+                # Debug: mostrar por que a linha foi rejeitada
+                if linha and not linha.startswith('Total') and len(linha) > 10:
+                    print(f"Linha rejeitada (formato): {linha[:50]}... (campos: {linha.count(';')})")
         
-        print(f"Encontradas {len(linhas_dados)} linhas de dados")
+        print(f"Total de linhas de dados encontradas: {len(linhas_dados)}")
         
         if not linhas_dados:
-            raise Exception("Nenhuma linha válida encontrada")
+            print("ERRO: Nenhuma linha de dados encontrada!")
+            print("Tentando análise mais detalhada...")
+            
+            # Debug mais detalhado
+            print("Analisando todas as linhas após o cabeçalho:")
+            for i in range(header_line + 1, min(header_line + 20, len(linhas))):
+                linha = linhas[i]
+                print(f"  {i}: '{linha}' (campos: {linha.count(';')}, match data: {bool(re.match(r'^\\d{2}/\\d{2}/\\d{2,4};', linha))})")
+            
+            raise Exception("Nenhuma linha de dados válida encontrada no formato novo")
+        
+        # Criar CSV estruturado
+        csv_estruturado = cabecalho_encontrado + '\n' + '\n'.join(linhas_dados)
+        print(f"CSV estruturado criado com {len(csv_estruturado)} caracteres")
         
         # Criar DataFrame
-        csv_estruturado = cabecalho + '\n' + '\n'.join(linhas_dados)
-        df = pd.read_csv(io.StringIO(csv_estruturado), delimiter=';')
+        try:
+            df = pd.read_csv(io.StringIO(csv_estruturado), delimiter=';')
+            print(f"DataFrame criado com {len(df)} linhas e colunas: {list(df.columns)}")
+        except Exception as e:
+            print(f"Erro ao criar DataFrame: {e}")
+            print("Conteúdo do CSV estruturado (primeiros 500 chars):")
+            print(csv_estruturado[:500])
+            raise e
         
         # Mapear colunas
         df = self.mapear_colunas_bradesco_novo(df)
+        print(f"Colunas após mapeamento: {list(df.columns)}")
         
         # Processar valores
         df = self.processar_valores_bradesco_novo(df)
+        print(f"Valores processados - Créditos: {(df['Tipo'] == 'C').sum()}, Débitos: {(df['Tipo'] == 'D').sum()}")
         
         # Limpar dados
+        df_antes = len(df)
         df = df[df['Valor'] > 0].dropna(subset=['Descricao'])
+        print(f"Após limpeza: {len(df)} linhas (eram {df_antes})")
+        
+        if len(df) == 0:
+            print("ERRO: Nenhuma linha válida após processamento!")
+            # Debug
+            df_debug = pd.read_csv(io.StringIO(csv_estruturado), delimiter=';')
+            df_debug = self.mapear_colunas_bradesco_novo(df_debug)
+            print("Primeiras linhas antes do processamento de valores:")
+            print(df_debug.head())
+            raise Exception("Nenhuma transação válida encontrada após processamento")
         
         # Processar datas
         df = self.processar_datas_bradesco(df)
         
+        # Retornar resultado
         resultado = df[['Data', 'Descricao', 'Valor', 'Tipo', 'Documento']].reset_index(drop=True)
-        print(f"Resultado final: {len(resultado)} linhas")
+        print(f"Resultado final formato novo: {len(resultado)} linhas")
+        
+        # Debug final
+        if len(resultado) > 0:
+            print("Amostra do resultado:")
+            print(resultado.head(3))
         
         return resultado
 
@@ -530,19 +684,58 @@ class handler(BaseHTTPRequestHandler):
 
     def processar_valores_bradesco_novo(self, df):
         """Processa valores do formato novo"""
+        print("=== PROCESSANDO VALORES FORMATO NOVO ===")
+        
+        # Debug: mostrar estrutura das colunas
+        print(f"Colunas disponíveis: {list(df.columns)}")
+        
+        # Garantir que as colunas existem
+        if 'Credito' not in df.columns:
+            df['Credito'] = ''
+        if 'Debito' not in df.columns:
+            df['Debito'] = ''
+        
+        # Debug: mostrar alguns valores brutos
+        print("Primeiros valores brutos:")
+        for i in range(min(3, len(df))):
+            print(f"  Linha {i}: Credito='{df.iloc[i]['Credito']}', Debito='{df.iloc[i]['Debito']}'")
+        
+        # Processar valores monetários
         df['Credito'] = df['Credito'].apply(self.processar_valor_monetario)
         df['Debito'] = df['Debito'].apply(self.processar_valor_monetario)
         
-        # Determinar tipo e valor
+        print(f"Após processamento:")
+        print(f"  Créditos > 0: {(df['Credito'] > 0).sum()}")
+        print(f"  Débitos != 0: {(df['Debito'] != 0).sum()}")
+        
+        # Determinar tipo e valor - LÓGICA CORRIGIDA
         def determinar_tipo_valor(row):
-            if row['Credito'] > 0:
-                return 'C', row['Credito']
-            elif row['Debito'] != 0:
-                return 'D', abs(row['Debito'])
+            credito = row['Credito']
+            debito = row['Debito']
+            
+            # Debug para primeiras linhas
+            if row.name < 3:
+                print(f"  Linha {row.name}: Credito={credito}, Debito={debito}")
+            
+            # Se tem crédito > 0, é entrada (C)
+            if credito > 0:
+                return 'C', credito
+            # Se tem débito != 0, é saída (D)
+            elif debito != 0:
+                return 'D', abs(debito)  # Sempre positivo
+            # Se ambos são zero, pode ser linha de saldo ou inválida
             else:
                 return 'D', 0.0
         
+        # Aplicar lógica
         df[['Tipo', 'Valor']] = df.apply(lambda row: pd.Series(determinar_tipo_valor(row)), axis=1)
+        
+        print(f"Resultado final:")
+        print(f"  Tipos C (Crédito): {(df['Tipo'] == 'C').sum()}")
+        print(f"  Tipos D (Débito): {(df['Tipo'] == 'D').sum()}")
+        print(f"  Valores > 0: {(df['Valor'] > 0).sum()}")
+        print(f"  Valores = 0: {(df['Valor'] == 0).sum()}")
+        
         return df
 
     def processar_valores_bradesco_antigo(self, df):
