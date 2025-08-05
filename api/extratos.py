@@ -185,28 +185,68 @@ class handler(BaseHTTPRequestHandler):
     def processar_excel(self, excel_data):
         """Processa arquivo Excel de categorias"""
         try:
-            df = pd.read_excel(io.BytesIO(excel_data))
+            print("=== PROCESSANDO EXCEL ===")
+            
+            # Verificar formato do arquivo
+            formato = self.verificar_formato_excel(excel_data)
+            print(f"Formato detectado: {formato}")
+            
+            if formato == 'xls':
+                raise Exception("Arquivos .xls (Excel antigo) não são suportados. Por favor, abra o arquivo no Excel e salve como .xlsx")
+            
+            # Tentar processar como .xlsx
+            try:
+                df = pd.read_excel(io.BytesIO(excel_data), engine='openpyxl')
+                print("Excel processado com sucesso (.xlsx)")
+            except Exception as e1:
+                print(f"Erro ao processar Excel: {e1}")
+                # Tentar sem especificar engine
+                try:
+                    df = pd.read_excel(io.BytesIO(excel_data))
+                    print("Excel processado com engine padrão")
+                except Exception as e2:
+                    raise Exception(f"Não foi possível processar o arquivo Excel. Certifique-se de que é um arquivo .xlsx válido. Erro: {e1}")
+            
+            print(f"Excel carregado: {len(df)} linhas, {len(df.columns)} colunas")
             
             if len(df.columns) < 2:
-                raise Exception("Excel deve ter pelo menos 2 colunas")
+                raise Exception("Excel deve ter pelo menos 2 colunas (Grupo e Palavra-chave)")
             
+            # Normalizar nomes das colunas
             df.columns = ['Grupo', 'Palavra_Chave'] + list(df.columns[2:])
             
+            print("Estrutura do Excel:")
+            print(f"  Colunas: {list(df.columns)}")
+            print("  Primeiras linhas:")
+            for i in range(min(5, len(df))):
+                print(f"    {i}: Grupo='{df.iloc[i]['Grupo']}', Palavra='{df.iloc[i]['Palavra_Chave']}'")
+            
+            # Processar categorias
             categorias = {}
             categoria_atual = None
             
-            for _, row in df.iterrows():
+            for index, row in df.iterrows():
+                # Se tem grupo definido, usar como categoria atual
                 if pd.notna(row['Grupo']) and str(row['Grupo']).strip():
                     categoria_atual = str(row['Grupo']).strip()
+                    print(f"Nova categoria: '{categoria_atual}'")
                 
+                # Se tem palavra-chave e categoria atual, adicionar
                 if pd.notna(row['Palavra_Chave']) and categoria_atual:
                     palavra = str(row['Palavra_Chave']).strip()
-                    categorias[palavra] = categoria_atual
+                    if palavra:  # Só adicionar se não estiver vazio
+                        categorias[palavra] = categoria_atual
+                        print(f"  Palavra-chave: '{palavra}' -> '{categoria_atual}'")
             
-            print(f"Categorias carregadas: {len(categorias)}")
+            print(f"Total de categorias processadas: {len(categorias)}")
+            
+            if len(categorias) == 0:
+                raise Exception("Nenhuma categoria válida encontrada no Excel. Verifique o formato do arquivo.")
+            
             return categorias
             
         except Exception as e:
+            print(f"Erro detalhado no Excel: {e}")
             raise Exception(f"Erro no Excel: {e}")
 
     # ==========================================
@@ -376,37 +416,57 @@ class handler(BaseHTTPRequestHandler):
         print(f"Total de linhas no arquivo: {len(linhas)}")
         
         # Debug: mostrar estrutura do arquivo
-        print("Estrutura do arquivo:")
-        for i, linha in enumerate(linhas[:10]):
-            print(f"  {i}: {linha[:80]}...")
+        print("Estrutura do arquivo (primeiras 15 linhas):")
+        for i, linha in enumerate(linhas[:15]):
+            print(f"  {i}: {linha[:100]}...")
         
-        # Encontrar cabeçalho - ser mais flexível
+        # Encontrar cabeçalho - ser MUITO mais flexível
         header_line = -1
         cabecalho_encontrado = None
         
-        for i, linha in enumerate(linhas):
-            # Procurar por diferentes variações do cabeçalho
-            if any(cab in linha for cab in [
-                'Data;Histórico;Docto.',
-                'Data;Historico;Docto.',
-                'Data;Histórico;Docto;',
-                'Data;Historico;Docto;'
-            ]):
-                header_line = i
-                cabecalho_encontrado = linha.strip()
-                print(f"Cabeçalho encontrado na linha {i}: {cabecalho_encontrado}")
-                break
+        # Procurar por diferentes padrões de cabeçalho
+        padroes_cabecalho = [
+            'Data;Histórico;Docto.',
+            'Data;Historico;Docto.',
+            'Data;Histórico;Docto;',
+            'Data;Historico;Docto;',
+            'Data;Lançamento;Dcto.',
+            'Data;Lancamento;Dcto.',
+            'Data;Histórico;Documento',
+            'Data;Historico;Documento'
+        ]
         
-        if header_line == -1:
-            # Tentar busca mais ampla
-            for i, linha in enumerate(linhas):
-                if 'Data;' in linha and ('Histórico' in linha or 'Historico' in linha):
+        for i, linha in enumerate(linhas):
+            for padrao in padroes_cabecalho:
+                if padrao in linha:
                     header_line = i
                     cabecalho_encontrado = linha.strip()
-                    print(f"Cabeçalho alternativo encontrado na linha {i}: {cabecalho_encontrado}")
+                    print(f"Cabeçalho encontrado na linha {i} com padrão '{padrao}': {cabecalho_encontrado}")
+                    break
+            if header_line != -1:
+                break
+        
+        # Se não encontrou com padrões específicos, procurar qualquer linha com "Data;" e múltiplos ";"
+        if header_line == -1:
+            print("Tentando busca mais ampla por cabeçalho...")
+            for i, linha in enumerate(linhas):
+                if ('Data;' in linha and 
+                    linha.count(';') >= 4 and 
+                    any(palavra in linha.upper() for palavra in ['HISTÓRICO', 'HISTORICO', 'LANÇAMENTO', 'LANCAMENTO'])):
+                    header_line = i
+                    cabecalho_encontrado = linha.strip()
+                    print(f"Cabeçalho alternativo encontrado na linha {i}: {linha[:100]}...")
                     break
         
         if header_line == -1:
+            print("ERRO: Cabeçalho não encontrado!")
+            print("Tentando análise manual das primeiras 20 linhas:")
+            for i, linha in enumerate(linhas[:20]):
+                if linha.strip():
+                    campos = linha.count(';')
+                    tem_data = bool(re.search(r'\d{2}/\d{2}/\d{2,4}', linha))
+                    print(f"  Linha {i}: campos={campos}, tem_data={tem_data}, conteúdo: {linha[:80]}...")
+            
             raise Exception("Cabeçalho não encontrado no formato novo. Verifique se o arquivo está correto.")
         
         # Extrair linhas de dados após o cabeçalho
@@ -415,56 +475,93 @@ class handler(BaseHTTPRequestHandler):
         
         print(f"Processando linhas a partir da linha {header_line + 1}...")
         
+        # Processar TODAS as linhas após o cabeçalho, sendo mais permissivo
         for i in range(header_line + 1, len(linhas)):
-            linha = linhas[i].strip()
+            linha_original = linhas[i]
+            linha = linha_original.strip()
             
             if not linha:  # Pular linhas vazias
                 continue
             
-            # Detectar seções especiais
-            if 'Últimos Lançamentos' in linha or 'ÚLTIMOS LANÇAMENTOS' in linha:
+            # Debug das primeiras 10 linhas processadas
+            if i - header_line <= 10:
+                print(f"  Analisando linha {i}: '{linha[:80]}...'")
+                print(f"    Campos: {linha.count(';')}")
+                print(f"    Match data: {bool(re.match(r'^\\d{2}/\\d{2}/\\d{2,4};', linha))}")
+            
+            # Detectar seções especiais (mas não parar o processamento)
+            if any(secao in linha.upper() for secao in ['ÚLTIMOS LANÇAMENTOS', 'ULTIMOS LANCAMENTOS']):
                 print(f"Seção 'Últimos Lançamentos' detectada na linha {i}")
                 secao_atual = "ultimos"
                 continue
             
-            if 'Os dados acima' in linha:
-                print(f"Fim dos dados detectado na linha {i}")
+            # Parar apenas em indicadores claros de fim
+            if any(fim in linha.upper() for fim in ['OS DADOS ACIMA', 'TOTAL GERAL', 'GERADO EM']):
+                print(f"Fim dos dados detectado na linha {i}: {linha[:50]}...")
                 break
             
-            # Filtrar linhas que não são dados
-            if any(x in linha.upper() for x in [
+            # Filtrar linhas que claramente não são dados
+            if any(excluir in linha.upper() for excluir in [
                 'SALDO ANTERIOR', 
-                'TOTAL;', 
-                'SALDOS INVEST FÁCIL',
-                'DATA;HISTÓRICO;VALOR'  # Cabeçalho de seção especial
+                'EXTRATO DE:',
+                'AGÊNCIA:',
+                'CONTA:',
+                'DATA;HISTÓRICO;VALOR',  # Cabeçalho de seção especial
+                'DATA;HISTORICO;VALOR'
             ]):
                 print(f"Linha ignorada (controle): {linha[:50]}...")
                 continue
             
-            # Verificar se é uma linha de dados válida
-            # Formato esperado: DD/MM/YY;Descrição;Documento;Valor1;Valor2;Saldo
-            if re.match(r'^\d{2}/\d{2}/\d{2,4};', linha) and linha.count(';') >= 4:
+            # Critérios MAIS FLEXÍVEIS para linha de dados válida
+            eh_linha_valida = False
+            
+            # Critério 1: Começa com data no formato DD/MM/YY ou DD/MM/YYYY
+            if re.match(r'^\d{2}/\d{2}/\d{2,4};', linha):
+                eh_linha_valida = True
+                motivo = "formato de data"
+            
+            # Critério 2: Tem pelo menos 3 campos e contém uma data em algum lugar
+            elif linha.count(';') >= 2 and re.search(r'\d{2}/\d{2}/\d{2,4}', linha):
+                eh_linha_valida = True
+                motivo = "contém data"
+            
+            # Critério 3: Linha com muitos campos numéricos (possível transação)
+            elif (linha.count(';') >= 4 and 
+                  re.search(r'\d+[,\.]\d+', linha) and  # Tem valores monetários
+                  not linha.upper().startswith('TOTAL')):
+                eh_linha_valida = True
+                motivo = "valores monetários"
+            
+            if eh_linha_valida:
                 linhas_dados.append(linha)
                 
                 # Debug: mostrar primeiras 5 linhas válidas
                 if len(linhas_dados) <= 5:
-                    print(f"Linha dados {len(linhas_dados)}: {linha[:80]}...")
+                    print(f"✓ Linha dados {len(linhas_dados)} ({motivo}): {linha[:80]}...")
             else:
-                # Debug: mostrar por que a linha foi rejeitada
-                if linha and not linha.startswith('Total') and len(linha) > 10:
-                    print(f"Linha rejeitada (formato): {linha[:50]}... (campos: {linha.count(';')})")
+                # Debug: mostrar por que foi rejeitada (só para as primeiras)
+                if i - header_line <= 15:
+                    print(f"✗ Linha rejeitada: {linha[:50]}... (campos: {linha.count(';')})")
         
         print(f"Total de linhas de dados encontradas: {len(linhas_dados)}")
         
         if not linhas_dados:
             print("ERRO: Nenhuma linha de dados encontrada!")
-            print("Tentando análise mais detalhada...")
+            print("Fazendo análise detalhada das linhas após o cabeçalho:")
             
-            # Debug mais detalhado
-            print("Analisando todas as linhas após o cabeçalho:")
-            for i in range(header_line + 1, min(header_line + 20, len(linhas))):
-                linha = linhas[i]
-                print(f"  {i}: '{linha}' (campos: {linha.count(';')}, match data: {bool(re.match(r'^\\d{2}/\\d{2}/\\d{2,4};', linha))})")
+            inicio_analise = max(0, header_line + 1)
+            fim_analise = min(len(linhas), header_line + 30)
+            
+            for i in range(inicio_analise, fim_analise):
+                linha = linhas[i].strip()
+                if linha:
+                    print(f"  Linha {i}:")
+                    print(f"    Conteúdo: '{linha}'")
+                    print(f"    Campos (;): {linha.count(';')}")
+                    print(f"    Match data: {bool(re.match(r'^\\d{2}/\\d{2}/\\d{2,4};', linha))}")
+                    print(f"    Contém data: {bool(re.search(r'\\d{2}/\\d{2}/\\d{2,4}', linha))}")
+                    print(f"    Contém valores: {bool(re.search(r'\\d+[,\\.\\d]*', linha))}")
+                    print()
             
             raise Exception("Nenhuma linha de dados válida encontrada no formato novo")
         
@@ -478,9 +575,18 @@ class handler(BaseHTTPRequestHandler):
             print(f"DataFrame criado com {len(df)} linhas e colunas: {list(df.columns)}")
         except Exception as e:
             print(f"Erro ao criar DataFrame: {e}")
-            print("Conteúdo do CSV estruturado (primeiros 500 chars):")
-            print(csv_estruturado[:500])
-            raise e
+            print("Conteúdo do CSV estruturado (primeiros 1000 chars):")
+            print(csv_estruturado[:1000])
+            print("...")
+            print("Tentando com configurações alternativas...")
+            
+            try:
+                # Tentar com outras configurações
+                df = pd.read_csv(io.StringIO(csv_estruturado), delimiter=';', on_bad_lines='skip')
+                print(f"DataFrame criado com modo alternativo: {len(df)} linhas")
+            except Exception as e2:
+                print(f"Erro mesmo com modo alternativo: {e2}")
+                raise e
         
         # Mapear colunas
         df = self.mapear_colunas_bradesco_novo(df)
@@ -497,12 +603,19 @@ class handler(BaseHTTPRequestHandler):
         
         if len(df) == 0:
             print("ERRO: Nenhuma linha válida após processamento!")
-            # Debug
+            # Debug mais detalhado
             df_debug = pd.read_csv(io.StringIO(csv_estruturado), delimiter=';')
             df_debug = self.mapear_colunas_bradesco_novo(df_debug)
-            print("Primeiras linhas antes do processamento de valores:")
-            print(df_debug.head())
-            raise Exception("Nenhuma transação válida encontrada após processamento")
+            print("Análise detalhada dos dados:")
+            print("Primeiras 5 linhas antes do processamento de valores:")
+            for i in range(min(5, len(df_debug))):
+                row = df_debug.iloc[i]
+                print(f"  Linha {i}:")
+                for col in df_debug.columns:
+                    print(f"    {col}: '{row[col]}'")
+                print()
+            
+            raise Exception("Nenhuma transação válida encontrada após processamento dos valores")
         
         # Processar datas
         df = self.processar_datas_bradesco(df)
@@ -514,7 +627,8 @@ class handler(BaseHTTPRequestHandler):
         # Debug final
         if len(resultado) > 0:
             print("Amostra do resultado:")
-            print(resultado.head(3))
+            for i, row in resultado.head(3).iterrows():
+                print(f"  {i}: Data={row['Data']}, Desc='{row['Descricao'][:30]}...', Valor={row['Valor']}, Tipo={row['Tipo']}")
         
         return resultado
 
