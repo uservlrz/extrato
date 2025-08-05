@@ -1151,3 +1151,14 @@ class handler(BaseHTTPRequestHandler):
         except Exception as e:
             print(f"Erro ao gerar Excel: {e}")
             return None
+    
+    def verificar_formato_excel(self, excel_data):
+        """Verifica se é .xls ou .xlsx baseado nos primeiros bytes"""
+        # .xlsx começa com PK (ZIP signature)
+        if excel_data[:2] == b'PK':
+            return 'xlsx'
+        # .xls tem assinatura específica
+        elif excel_data[:8] == b'\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1':
+            return 'xls'
+        else:
+            return 'unknown'
