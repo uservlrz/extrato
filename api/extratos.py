@@ -384,16 +384,19 @@ class handler(BaseHTTPRequestHandler):
             if not csv_string:
                 raise Exception("Não foi possível decodificar o CSV")
             
-            # Detectar formato e processar
+            # Detectar formato principal (BB vs Bradesco)
             formato = self.detectar_formato_csv(csv_string)
             print(f"Formato detectado: {formato}")
             
             if formato == 'bradesco':
+                # Usar diretamente o processador universal (sem sub-detecção)
                 return self.processar_csv_bradesco(csv_string)
             elif formato == 'banco_brasil':
                 return self.processar_csv_banco_brasil(csv_string)
             else:
-                raise Exception(f"Formato não reconhecido: {formato}")
+                # Se não conseguiu detectar, tentar Bradesco mesmo assim
+                print("Formato não reconhecido, tentando como Bradesco...")
+                return self.processar_csv_bradesco(csv_string)
                 
         except Exception as e:
             print(f"Erro no processamento CSV: {e}")
