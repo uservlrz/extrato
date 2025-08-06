@@ -52,8 +52,12 @@ class handler(BaseHTTPRequestHandler):
             categorias = self.processar_excel(excel_data)
             df = self.processar_csv(csv_data)
             
-            # Categorizar transações
-            df['Categoria'] = df['Descricao'].apply(lambda x: self.categorizar(x, categorias))
+            # Categorizar transações (FILTRAR CRÉDITOS DA CATEGORIA "OUTROS")
+            df['Categoria'] = df.apply(
+                lambda row: self.categorizar(row['Descricao'], categorias) if row['Tipo'] == 'D' 
+                else self.categorizar(row['Descricao'], categorias) if self.categorizar(row['Descricao'], categorias) != 'Outros'
+                else 'Receitas Não Categorizadas', axis=1
+            )
             
             # Separar por tipo
             df_creditos = df[df['Tipo'] == 'C'].copy()
@@ -486,12 +490,21 @@ class handler(BaseHTTPRequestHandler):
             if len(dataframe) == 0:
                 return pd.DataFrame(columns=['categoria', 'total', 'quantidade', 'percentual'])
             
-            resultados = dataframe.groupby('Categoria').agg({
+            # FILTRAR CATEGORIA "OUTROS" - APENAS DÉBITOS
+            if 'Outros' in dataframe['Categoria'].values:
+                dataframe_filtrado = dataframe[
+                    (dataframe['Categoria'] != 'Outros') | 
+                    (dataframe['Tipo'] == 'D')
+                ].copy()
+            else:
+                dataframe_filtrado = dataframe.copy()
+            
+            resultados = dataframe_filtrado.groupby('Categoria').agg({
                 'Valor': ['sum', 'count']
             }).reset_index()
             resultados.columns = ['categoria', 'total', 'quantidade']
             
-            valor_total = dataframe['Valor'].sum()
+            valor_total = dataframe_filtrado['Valor'].sum()
             if valor_total > 0:
                 resultados['percentual'] = (resultados['total'] / valor_total) * 100
             else:
@@ -503,7 +516,15 @@ class handler(BaseHTTPRequestHandler):
             categorias_detalhadas = []
             for _, row in resultados.iterrows():
                 categoria = row['categoria']
-                itens_cat = dataframe[dataframe['Categoria'] == categoria]
+                
+                # FILTRAR ITENS DA CATEGORIA - SE FOR "OUTROS", APENAS DÉBITOS
+                if categoria == 'Outros':
+                    itens_cat = dataframe[
+                        (dataframe['Categoria'] == categoria) & 
+                        (dataframe['Tipo'] == 'D')
+                    ]
+                else:
+                    itens_cat = dataframe[dataframe['Categoria'] == categoria]
                 
                 itens = []
                 for _, item in itens_cat.iterrows():
