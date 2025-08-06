@@ -285,7 +285,7 @@ class handler(BaseHTTPRequestHandler):
                 return self.processar_banco_brasil(csv_string)
             else:
                 print("Formato detectado: Bradesco")
-                return self.processar_bradesco_completo(csv_string)
+                return self.processar_bradesco_corrigido(csv_string)
                 
         except Exception as e:
             print(f"Erro no processamento CSV: {e}")
@@ -340,15 +340,15 @@ class handler(BaseHTTPRequestHandler):
         print(f"Banco do Brasil processado: {len(df)} linhas")
         return df
 
-    def processar_bradesco_completo(self, csv_string):
-        """Processa Bradesco com consolidação completa de transações"""
-        print("=== PROCESSANDO BRADESCO COMPLETO ===")
+    def processar_bradesco_corrigido(self, csv_string):
+        """Processa Bradesco com lógica corrigida para extrair valores corretos"""
+        print("=== PROCESSANDO BRADESCO CORRIGIDO ===")
         
         # Dividir por \r
         linhas = csv_string.split('\r')
         print(f"Total de linhas: {len(linhas)}")
         
-        # Encontrar e processar transações
+        # Processar transações
         transacoes = []
         i = 0
         
@@ -365,11 +365,11 @@ class handler(BaseHTTPRequestHandler):
             
             # Verificar se é uma transação
             if self.eh_transacao_bradesco_principal(linha):
-                transacao = self.processar_transacao_bradesco_completa(linhas, i)
+                transacao = self.processar_transacao_bradesco_corrigida(linhas, i)
                 if transacao:
                     transacoes.append(transacao)
                     if len(transacoes) <= 10:  # Debug das primeiras transações
-                        print(f"Transação {len(transacoes)}: {transacao['Data']} - {transacao['Descricao'][:50]}... - R$ {transacao['Valor']} ({transacao['Tipo']})")
+                        print(f"Transação {len(transacoes)}: {transacao['Data']} - {transacao['Descricao'][:40]}... - R$ {transacao['Valor']} ({transacao['Tipo']})")
             
             i += 1
         
@@ -420,12 +420,12 @@ class handler(BaseHTTPRequestHandler):
         
         return True
     
-    def processar_transacao_bradesco_completa(self, linhas, indice_inicial):
-        """Processa uma transação completa do Bradesco (linha principal + detalhes)"""
+    def processar_transacao_bradesco_corrigida(self, linhas, indice_inicial):
+        """Processa uma transação do Bradesco com a lógica corrigida"""
         linha_principal = linhas[indice_inicial].strip()
         campos = [campo.strip().replace('"', '') for campo in linha_principal.split(';')]
         
-        if len(campos) < 4:
+        if len(campos) < 6:  # Precisa ter 6 campos: Data, Histórico, Doc, Crédito, Débito, Saldo
             return None
         
         # Extrair informações básicas
@@ -433,29 +433,14 @@ class handler(BaseHTTPRequestHandler):
         historico_base = campos[1].strip()
         documento = campos[2] if len(campos) > 2 else ''
         
-        # Extrair valores de crédito e débito
-        credito = 0.0
-        debito = 0.0
+        # CORREÇÃO PRINCIPAL: Extrair valores dos campos específicos (não procurar em todos)
+        credito_str = campos[3]  # Campo específico de crédito
+        debito_str = campos[4]   # Campo específico de débito
+        # Ignorar campos[5] que é o saldo acumulado
         
-        for campo in campos[3:]:
-            if campo and campo != '':
-                valor = self.processar_valor_monetario(campo)
-                if valor > 0:
-                    credito = valor
-                elif valor < 0:
-                    debito = abs(valor)
-        
-        # Se não encontrou valores na linha principal, pode estar na estrutura diferente
-        if credito == 0 and debito == 0:
-            # Tentar extrair valor de qualquer campo não vazio
-            for campo in campos:
-                valor = self.processar_valor_monetario(campo)
-                if valor != 0:
-                    if valor > 0:
-                        credito = valor
-                    else:
-                        debito = abs(valor)
-                    break
+        # Processar valores dos campos corretos
+        credito = self.processar_valor_monetario(credito_str) if credito_str else 0.0
+        debito = abs(self.processar_valor_monetario(debito_str)) if debito_str else 0.0  # Débito sempre positivo
         
         # Determinar tipo e valor final
         if credito > 0:
@@ -515,7 +500,7 @@ class handler(BaseHTTPRequestHandler):
         return df
 
     # ==========================================
-    # CATEGORIZAÇÃO E RESULTADOS (mantido igual)
+    # CATEGORIZAÇÃO E RESULTADOS
     # ==========================================
     
     def categorizar(self, descricao, categorias):
@@ -609,7 +594,7 @@ class handler(BaseHTTPRequestHandler):
     # ==========================================
     
     def gerar_excel_completo(self, categorias_gerais, categorias_creditos, categorias_debitos, df_geral, df_creditos, df_debitos):
-        """Gera Excel completo com todas as abas - VERSÃO COMPLETA RESTAURADA"""
+        """Gera Excel completo com todas as abas"""
         try:
             wb = openpyxl.Workbook()
             wb.remove(wb.active)
