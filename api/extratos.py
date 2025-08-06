@@ -256,11 +256,11 @@ class handler(BaseHTTPRequestHandler):
             return 'unknown'
 
     # ==========================================
-    # PROCESSAMENTO CSV - VERSÃO SIMPLIFICADA
+    # PROCESSAMENTO CSV - VERSÃO CORRIGIDA PARA BRADESCO
     # ==========================================
     
     def processar_csv(self, csv_data):
-        """Processa CSV - versão universal simplificada"""
+        """Processa CSV - versão universal com correção específica para Bradesco"""
         try:
             print("=== PROCESSANDO CSV ===")
             
@@ -285,7 +285,7 @@ class handler(BaseHTTPRequestHandler):
                 return self.processar_banco_brasil(csv_string)
             else:
                 print("Formato detectado: Bradesco")
-                return self.processar_bradesco_universal(csv_string)
+                return self.processar_bradesco_completo(csv_string)
                 
         except Exception as e:
             print(f"Erro no processamento CSV: {e}")
@@ -340,248 +340,161 @@ class handler(BaseHTTPRequestHandler):
         print(f"Banco do Brasil processado: {len(df)} linhas")
         return df
 
-    def processar_bradesco_universal(self, csv_string):
-        """Processa qualquer formato de Bradesco de forma universal - VERSÃO ROBUSTA"""
-        print("=== PROCESSANDO BRADESCO UNIVERSAL (VERSÃO ROBUSTA) ===")
+    def processar_bradesco_completo(self, csv_string):
+        """Processa Bradesco com consolidação completa de transações"""
+        print("=== PROCESSANDO BRADESCO COMPLETO ===")
         
-        linhas = csv_string.split('\n')
+        # Dividir por \r
+        linhas = csv_string.split('\r')
         print(f"Total de linhas: {len(linhas)}")
         
-        # Debug: mostrar estrutura
-        print("=== ESTRUTURA DO ARQUIVO (primeiras 20 linhas) ===")
-        for i, linha in enumerate(linhas[:20]):
-            print(f"{i:2d}: {linha}")
+        # Encontrar e processar transações
+        transacoes = []
+        i = 0
         
-        # TENTATIVA 1: Formato novo organizado (linhas individuais)
-        print("\n=== TENTATIVA 1: FORMATO NOVO ORGANIZADO ===")
-        try:
-            resultado = self.processar_formato_novo_organizado(csv_string)
-            if len(resultado) > 0:
-                print(f"✅ SUCESSO - Formato novo: {len(resultado)} transações")
-                return resultado
-            else:
-                print("❌ Formato novo não retornou dados")
-        except Exception as e:
-            print(f"❌ Erro formato novo: {e}")
-        
-        # TENTATIVA 2: Formato antigo (dados concatenados com \r)
-        print("\n=== TENTATIVA 2: FORMATO ANTIGO (DADOS CONCATENADOS) ===")
-        try:
-            resultado = self.processar_formato_antigo_concatenado(csv_string)
-            if len(resultado) > 0:
-                print(f"✅ SUCESSO - Formato antigo: {len(resultado)} transações")
-                return resultado
-            else:
-                print("❌ Formato antigo não retornou dados")
-        except Exception as e:
-            print(f"❌ Erro formato antigo: {e}")
-        
-        # TENTATIVA 3: Processamento linha por linha universal
-        print("\n=== TENTATIVA 3: PROCESSAMENTO UNIVERSAL LINHA POR LINHA ===")
-        try:
-            transacoes = []
-            
-            for i, linha in enumerate(linhas):
-                linha_limpa = linha.strip()
-                if not linha_limpa:
-                    continue
-                
-                if self.eh_transacao_bradesco(linha_limpa):
-                    transacao = self.extrair_transacao_bradesco(linha_limpa)
-                    if transacao:
-                        transacoes.append(transacao)
-                        if len(transacoes) <= 5:
-                            print(f"Transação {len(transacoes)}: {transacao['Data']} - {transacao['Descricao'][:30]}... - R$ {transacao['Valor']}")
-            
-            if transacoes:
-                df = pd.DataFrame(transacoes)
-                df = self.processar_datas_padrao(df)
-                print(f"✅ SUCESSO - Processamento universal: {len(df)} transações")
-                return df
-            else:
-                print("❌ Processamento universal não encontrou transações")
-                
-        except Exception as e:
-            print(f"❌ Erro processamento universal: {e}")
-        
-        # Se chegou até aqui, fazer debug detalhado
-        print("\n=== NENHUM MÉTODO FUNCIONOU - DEBUG DETALHADO ===")
-        self.debug_arquivo_bradesco(csv_string)
-        raise Exception("Não foi possível processar o arquivo Bradesco com nenhum método")
-    
-    def processar_formato_novo_organizado(self, csv_string):
-        """Processa formato novo com linhas organizadas"""
-        linhas = csv_string.split('\n')
-        
-        # Procurar cabeçalho
-        header_line = -1
-        cabecalho = None
-        
-        padroes_cabecalho = [
-            r'Data;.*?Histórico.*?;.*?Docto',
-            r'Data;.*?Historico.*?;.*?Docto', 
-            r'Data;.*?Histórico.*?;.*?Crédito',
-            r'Data;.*?Historico.*?;.*?Credito'
-        ]
-        
-        for i, linha in enumerate(linhas):
-            for padrao in padroes_cabecalho:
-                if re.search(padrao, linha, re.IGNORECASE):
-                    header_line = i
-                    cabecalho = linha.strip()
-                    print(f"Cabeçalho encontrado linha {i}: {cabecalho}")
-                    break
-            if header_line != -1:
-                break
-        
-        if header_line == -1:
-            raise Exception("Cabeçalho formato novo não encontrado")
-        
-        # Extrair transações após cabeçalho
-        transacoes_linhas = []
-        for i in range(header_line + 1, len(linhas)):
+        while i < len(linhas):
             linha = linhas[i].strip()
             if not linha:
+                i += 1
                 continue
             
-            # Parar em indicadores de fim
-            if any(fim in linha.upper() for fim in ['OS DADOS ACIMA', 'TOTAL GERAL', 'GERADO EM']):
-                break
-            
-            # Pular controles
-            if any(ctrl in linha.upper() for ctrl in ['SALDO ANTERIOR', 'EXTRATO DE', 'ÚLTIMOS LANÇAMENTOS']):
+            # Pular cabeçalhos e informações não transacionais
+            if self.eh_linha_sistema_bradesco(linha):
+                i += 1
                 continue
             
-            # Se começa com data e tem campos suficientes
-            if re.match(r'^\d{2}/\d{2}/\d{2,4};', linha) and linha.count(';') >= 3:
-                transacoes_linhas.append(linha)
-        
-        if not transacoes_linhas:
-            return pd.DataFrame(columns=['Data', 'Descricao', 'Valor', 'Tipo', 'Documento'])
-        
-        # Criar CSV e processar
-        csv_data = cabecalho + '\n' + '\n'.join(transacoes_linhas)
-        
-        try:
-            df = pd.read_csv(io.StringIO(csv_data), delimiter=';')
-        except Exception as e:
-            print(f"Erro ao criar DataFrame: {e}")
-            df = pd.read_csv(io.StringIO(csv_data), delimiter=';', on_bad_lines='skip')
-        
-        return self.processar_dataframe_bradesco(df)
-    
-    def processar_formato_antigo_concatenado(self, csv_string):
-        """Processa formato antigo com dados concatenados em uma linha"""
-        linhas = csv_string.split('\n')
-        
-        # Procurar linha com muitos \r (dados concatenados)
-        linha_dados = None
-        for linha in linhas:
-            if linha.count('\r') > 10 and ';' in linha and 'Data;' in linha:
-                linha_dados = linha
-                break
-        
-        if not linha_dados:
-            # Tentar concatenar linhas a partir do cabeçalho
-            for i, linha in enumerate(linhas):
-                if re.search(r'Data;.*?Lançamento.*?;.*?Dcto', linha, re.IGNORECASE):
-                    linha_dados = ''.join(linhas[i:])
-                    break
-        
-        if not linha_dados:
-            raise Exception("Dados concatenados não encontrados")
-        
-        # Separar por \r
-        partes = linha_dados.split('\r')
-        cabecalho = partes[0].strip()
-        
-        # Filtrar transações válidas
-        transacoes_linhas = []
-        for parte in partes[1:]:
-            linha = parte.strip()
-            if (linha and 
-                re.match(r'^\d{2}/\d{2}/\d{4};', linha) and
-                linha.count(';') >= 4 and
-                'SALDO ANTERIOR' not in linha.upper()):
-                transacoes_linhas.append(linha)
-        
-        if not transacoes_linhas:
-            return pd.DataFrame(columns=['Data', 'Descricao', 'Valor', 'Tipo', 'Documento'])
-        
-        # Criar CSV e processar
-        csv_data = cabecalho + '\n' + '\n'.join(transacoes_linhas)
-        
-        try:
-            df = pd.read_csv(io.StringIO(csv_data), delimiter=';')
-        except Exception as e:
-            print(f"Erro ao criar DataFrame: {e}")
-            df = pd.read_csv(io.StringIO(csv_data), delimiter=';', on_bad_lines='skip')
-        
-        return self.processar_dataframe_bradesco(df)
-    
-    def processar_dataframe_bradesco(self, df):
-        """Processa DataFrame do Bradesco de forma universal"""
-        print(f"Processando DataFrame: {len(df)} linhas, colunas: {list(df.columns)}")
-        
-        # Mapear colunas de forma inteligente
-        mapeamento = {}
-        for col in df.columns:
-            col_lower = col.lower().strip()
-            if 'data' in col_lower:
-                mapeamento[col] = 'Data'
-            elif any(desc in col_lower for desc in ['histórico', 'historico', 'lançamento', 'lancamento']):
-                mapeamento[col] = 'Descricao'
-            elif any(doc in col_lower for doc in ['docto', 'documento']):
-                mapeamento[col] = 'Documento'
-            elif any(cred in col_lower for cred in ['crédito', 'credito']):
-                mapeamento[col] = 'Credito'
-            elif any(deb in col_lower for deb in ['débito', 'debito']):
-                mapeamento[col] = 'Debito'
-        
-        df = df.rename(columns=mapeamento)
-        print(f"Colunas após mapeamento: {list(df.columns)}")
-        
-        # Garantir colunas essenciais
-        for col in ['Credito', 'Debito', 'Documento']:
-            if col not in df.columns:
-                df[col] = '' if col == 'Documento' else 0.0
-        
-        # Processar valores
-        if 'Credito' in df.columns:
-            df['Credito'] = df['Credito'].apply(self.processar_valor_monetario)
-        if 'Debito' in df.columns:
-            df['Debito'] = df['Debito'].apply(self.processar_valor_monetario)
-        
-        # Determinar tipo e valor
-        def determinar_tipo_valor(row):
-            credito = row.get('Credito', 0)
-            debito = row.get('Debito', 0)
+            # Verificar se é uma transação
+            if self.eh_transacao_bradesco_principal(linha):
+                transacao = self.processar_transacao_bradesco_completa(linhas, i)
+                if transacao:
+                    transacoes.append(transacao)
+                    if len(transacoes) <= 10:  # Debug das primeiras transações
+                        print(f"Transação {len(transacoes)}: {transacao['Data']} - {transacao['Descricao'][:50]}... - R$ {transacao['Valor']} ({transacao['Tipo']})")
             
-            if credito > 0:
-                return 'C', credito
-            elif debito != 0:
-                return 'D', abs(debito)
-            else:
-                return 'D', 0.0
+            i += 1
         
-        df[['Tipo', 'Valor']] = df.apply(lambda row: pd.Series(determinar_tipo_valor(row)), axis=1)
+        if not transacoes:
+            print("❌ Nenhuma transação encontrada")
+            return pd.DataFrame(columns=['Data', 'Descricao', 'Valor', 'Tipo', 'Documento'])
         
-        # Limpar dados
-        df = df[df['Valor'] > 0].dropna(subset=['Descricao'])
+        # Criar DataFrame
+        df = pd.DataFrame(transacoes)
         
         # Processar datas
         df = self.processar_datas_padrao(df)
         
-        # Retornar colunas padrão
-        colunas_resultado = ['Data', 'Descricao', 'Valor', 'Tipo', 'Documento']
-        for col in colunas_resultado:
-            if col not in df.columns:
-                df[col] = '' if col == 'Documento' else None
+        print(f"✅ Bradesco processado: {len(df)} transações válidas")
+        return df
+    
+    def eh_linha_sistema_bradesco(self, linha):
+        """Verifica se é linha do sistema (não transacional)"""
+        indicadores_sistema = [
+            'Extrato de:',
+            'Data;Histórico;Docto',
+            'Data;Historico;Docto', 
+            'Os dados acima têm como base',
+            'Últimos Lançamentos',
+            ';Total;',
+            'SALDO ANTERIOR'
+        ]
         
-        resultado = df[colunas_resultado].reset_index(drop=True)
-        print(f"Resultado processado: {len(resultado)} linhas válidas")
+        for indicador in indicadores_sistema:
+            if indicador in linha:
+                return True
         
-        return resultado
+        return False
+    
+    def eh_transacao_bradesco_principal(self, linha):
+        """Verifica se é uma linha principal de transação (não de detalhe)"""
+        # Deve começar com data
+        if not re.match(r'^\d{2}/\d{2}/\d{2};', linha):
+            return False
+        
+        # Não deve ser saldo anterior
+        if 'SALDO ANTERIOR' in linha.upper():
+            return False
+        
+        # Deve ter pelo menos 4 campos
+        if linha.count(';') < 3:
+            return False
+        
+        return True
+    
+    def processar_transacao_bradesco_completa(self, linhas, indice_inicial):
+        """Processa uma transação completa do Bradesco (linha principal + detalhes)"""
+        linha_principal = linhas[indice_inicial].strip()
+        campos = [campo.strip().replace('"', '') for campo in linha_principal.split(';')]
+        
+        if len(campos) < 4:
+            return None
+        
+        # Extrair informações básicas
+        data = campos[0]
+        historico_base = campos[1].strip()
+        documento = campos[2] if len(campos) > 2 else ''
+        
+        # Extrair valores de crédito e débito
+        credito = 0.0
+        debito = 0.0
+        
+        for campo in campos[3:]:
+            if campo and campo != '':
+                valor = self.processar_valor_monetario(campo)
+                if valor > 0:
+                    credito = valor
+                elif valor < 0:
+                    debito = abs(valor)
+        
+        # Se não encontrou valores na linha principal, pode estar na estrutura diferente
+        if credito == 0 and debito == 0:
+            # Tentar extrair valor de qualquer campo não vazio
+            for campo in campos:
+                valor = self.processar_valor_monetario(campo)
+                if valor != 0:
+                    if valor > 0:
+                        credito = valor
+                    else:
+                        debito = abs(valor)
+                    break
+        
+        # Determinar tipo e valor final
+        if credito > 0:
+            tipo = 'C'
+            valor_final = credito
+        elif debito > 0:
+            tipo = 'D'
+            valor_final = debito
+        else:
+            return None
+        
+        # Verificar se há linha de detalhes na próxima linha
+        descricao_completa = historico_base
+        if indice_inicial + 1 < len(linhas):
+            proxima_linha = linhas[indice_inicial + 1].strip()
+            
+            # Se a próxima linha começa com ; e tem informações adicionais
+            if proxima_linha.startswith(';') and len(proxima_linha) > 5:
+                detalhe = proxima_linha.lstrip(';').strip()
+                # Remover campos vazios
+                detalhe_limpo = re.sub(r';;+', '', detalhe).rstrip(';').strip()
+                
+                if detalhe_limpo and detalhe_limpo != '':
+                    # Adicionar detalhe à descrição
+                    if historico_base:
+                        descricao_completa = f"{historico_base} - {detalhe_limpo}"
+                    else:
+                        descricao_completa = detalhe_limpo
+        
+        # Limpar descrição
+        descricao_completa = descricao_completa.replace('"', '').strip()
+        
+        return {
+            'Data': data,
+            'Descricao': descricao_completa,
+            'Valor': valor_final,
+            'Tipo': tipo,
+            'Documento': documento
+        }
     
     def processar_datas_padrao(self, df):
         """Processa datas de forma padrão"""
@@ -589,115 +502,20 @@ class handler(BaseHTTPRequestHandler):
             return df
         
         try:
+            # Primeiro tentar formato DD/MM/YY
             df['Data'] = pd.to_datetime(df['Data'], format='%d/%m/%y', errors='coerce')
-            if df['Data'].isna().all():
-                df['Data'] = pd.to_datetime(df['Data'], format='%d/%m/%Y', errors='coerce')
+            
+            # Se falhou, tentar DD/MM/YYYY
+            mask = df['Data'].isna()
+            if mask.any():
+                df.loc[mask, 'Data'] = pd.to_datetime(df.loc[mask, 'Data'], format='%d/%m/%Y', errors='coerce')
         except:
             print("Mantendo datas como string")
         
         return df
 
-    def eh_transacao_bradesco(self, linha):
-        """Verifica se uma linha é uma transação do Bradesco"""
-        # Critérios para ser transação:
-        criterios = 0
-        
-        # 1. Tem data brasileira
-        if re.search(r'\d{2}/\d{2}/\d{2,4}', linha):
-            criterios += 1
-        
-        # 2. Tem múltiplos campos
-        if linha.count(';') >= 3:
-            criterios += 1
-        
-        # 3. Não é linha de controle
-        if not any(ctrl in linha.upper() for ctrl in [
-            'SALDO ANTERIOR', 'EXTRATO DE', 'AGÊNCIA', 'CONTA', 'TOTAL',
-            'OS DADOS ACIMA', 'DATA;HISTÓRICO', 'DATA;HISTORICO', 'DATA;LANÇAMENTO'
-        ]):
-            criterios += 1
-        
-        # 4. Tem conteúdo textual (descrição)
-        if any(len(campo.strip()) > 5 for campo in linha.split(';') 
-               if not re.match(r'^[\d\.,\-\s"]*$', campo.strip())):
-            criterios += 1
-        
-        return criterios >= 3
-
-    def extrair_transacao_bradesco(self, linha):
-        """Extrai dados de uma transação do Bradesco"""
-        campos = [campo.strip() for campo in linha.split(';')]
-        
-        # Extrair data
-        data = None
-        for campo in campos:
-            match = re.search(r'\d{2}/\d{2}/\d{2,4}', campo)
-            if match:
-                data = match.group()
-                break
-        
-        if not data:
-            return None
-        
-        # Extrair descrição (maior campo textual)
-        descricao = ""
-        for campo in campos:
-            campo_limpo = campo.replace('"', '').strip()
-            if (len(campo_limpo) > len(descricao) and
-                len(campo_limpo) > 3 and
-                not re.match(r'^\d{2}/\d{2}/\d{2,4}$', campo_limpo) and
-                not re.match(r'^[\d\.,\-\s]*$', campo_limpo)):
-                descricao = campo_limpo
-        
-        if not descricao:
-            return None
-        
-        # Extrair valores
-        valores = []
-        for campo in campos:
-            valor = self.processar_valor_monetario(campo)
-            if valor != 0:
-                valores.append(valor)
-        
-        if not valores:
-            return None
-        
-        # Determinar valor principal e tipo
-        valor_principal = max(valores, key=abs)
-        tipo = 'C' if valor_principal > 0 else 'D'
-        valor_final = abs(valor_principal)
-        
-        return {
-            'Data': data,
-            'Descricao': descricao,
-            'Valor': valor_final,
-            'Tipo': tipo,
-            'Documento': ''
-        }
-
-    def debug_arquivo_bradesco(self, csv_string):
-        """Debug quando não consegue processar Bradesco"""
-        print("\n=== DEBUG DETALHADO ===")
-        
-        linhas = csv_string.split('\n')
-        
-        print(f"Total de linhas: {len(linhas)}")
-        print(f"Uso de ';': {csv_string.count(';')}")
-        print(f"Uso de '\\r': {csv_string.count(chr(13))}")
-        
-        # Datas encontradas
-        datas = re.findall(r'\d{2}/\d{2}/\d{2,4}', csv_string)
-        print(f"Datas encontradas: {len(datas)} - {datas[:5] if datas else 'nenhuma'}")
-        
-        # Linhas com múltiplos campos
-        linhas_complexas = [linha for linha in linhas if linha.count(';') >= 3]
-        print(f"Linhas com 3+ campos: {len(linhas_complexas)}")
-        
-        for i, linha in enumerate(linhas_complexas[:5]):
-            print(f"  {i+1}: {linha[:100]}...")
-
     # ==========================================
-    # CATEGORIZAÇÃO E RESULTADOS
+    # CATEGORIZAÇÃO E RESULTADOS (mantido igual)
     # ==========================================
     
     def categorizar(self, descricao, categorias):
