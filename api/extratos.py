@@ -251,14 +251,42 @@ class handler(BaseHTTPRequestHandler):
     
     def eh_banco_brasil(self, csv_string):
         """Verifica se é Banco do Brasil"""
+        csv_upper = csv_string.upper()
+        
+        # Indicadores específicos do BB (incluindo novos formatos)
         indicadores_bb = [
             '"DATA","DEPENDENCIA ORIGEM"',
             '"DATA","HISTÓRICO"',
-            '"DATA","HISTORICO"'
+            '"DATA","HISTORICO"',
+            '"DATA","DESCRIÇÃO"',
+            '"DATA","DESCRICAO"',
+            'DATA,DEPENDENCIA ORIGEM',
+            'DATA,HISTÓRICO',  
+            'DATA,HISTORICO',
+            'DATA,DESCRIÇÃO',
+            'DATA,DESCRICAO',
+            # Novo formato detectado
+            '"DATA","DEPENDENCIA ORIGEM","HIST',
+            '"DATA","DEPENDENCIA ORIGEM","HISTÓRICO"',
+            '"DATA","DEPENDENCIA ORIGEM","HISTORICO"'
         ]
         
         for indicador in indicadores_bb:
-            if indicador in csv_string.upper():
+            if indicador in csv_upper:
+                return True
+        
+        # Verificar palavras-chave específicas do BB
+        palavras_chave_bb = [
+            'BANCO DO BRASIL',
+            'DEPENDENCIA ORIGEM',
+            'NUMERO DO DOCUMENTO',
+            'DATA DO BALANCETE',
+            'BB RENDE FACIL',
+            'BB RENDE F'
+        ]
+        
+        for palavra in palavras_chave_bb:
+            if palavra in csv_upper:
                 return True
         
         # BB usa vírgulas, Bradesco usa ponto e vírgula
@@ -272,12 +300,20 @@ class handler(BaseHTTPRequestHandler):
         print("=== PROCESSANDO BANCO DO BRASIL ===")
         
         df = pd.read_csv(io.StringIO(csv_string))
+        print(f"Colunas detectadas: {list(df.columns)}")
         
+        # Remover linha de saldo se existir
+        if not df.empty:
+            df = df[~df.iloc[:, 0].astype(str).str.contains('S A L D O', na=False)]
+        
+        # Formato 1: Tem colunas 'Descrição' ou 'Descricao' 
         if 'Descrição' in df.columns or 'Descricao' in df.columns:
             desc_col = 'Descrição' if 'Descrição' in df.columns else 'Descricao'
             df = df.dropna(subset=[desc_col, 'Valor'])
             df['Descricao'] = df[desc_col]
             df['Documento'] = df.get('Documento', '')
+            
+        # Formato 2: Tem coluna 'Historico'
         elif 'Historico' in df.columns:
             df = df.dropna(subset=['Historico', 'Valor'])
             df = df[df['Historico'] != 'Saldo Anterior']
@@ -285,11 +321,52 @@ class handler(BaseHTTPRequestHandler):
             df['Documento'] = df.get('Numero do documento', '')
             df['Tipo'] = df['Valor'].apply(lambda x: 'C' if x >= 0 else 'D')
             df['Valor'] = df['Valor'].abs()
+            
+        # Formato 3: Novo formato com 'Histórico' (detectado no arquivo)
+        elif 'Histórico' in df.columns:
+            df = df.dropna(subset=['Histórico', 'Valor'])
+            df = df[df['Histórico'] != 'Saldo Anterior'] 
+            df['Descricao'] = df['Histórico']
+            df['Documento'] = df.get('Número do documento', df.get('Numero do documento', ''))
+            df['Tipo'] = df['Valor'].apply(lambda x: 'C' if float(str(x).replace(',', '.')) >= 0 else 'D')
+            df['Valor'] = df['Valor'].apply(lambda x: abs(float(str(x).replace(',', '.'))))
+            
+        # Formato 4: Histórico com caracteres especiais (problema de encoding)
         else:
-            raise Exception("Formato de CSV do Banco do Brasil não reconhecido")
+            # Verificar se há colunas que podem conter "Histórico" com problemas de encoding
+            hist_cols = [col for col in df.columns if 'hist' in col.lower() or 'tórico' in col.lower() or 't�rico' in col.lower()]
+            val_cols = [col for col in df.columns if 'valor' in col.lower()]
+            
+            if hist_cols and val_cols:
+                hist_col = hist_cols[0]
+                val_col = val_cols[0] 
+                
+                df = df.dropna(subset=[hist_col, val_col])
+                df = df[df[hist_col].astype(str) != 'Saldo Anterior']
+                df['Descricao'] = df[hist_col]
+                
+                # Buscar coluna de documento
+                doc_cols = [col for col in df.columns if 'documento' in col.lower() or 'n�mero' in col.lower()]
+                df['Documento'] = df[doc_cols[0]] if doc_cols else ''
+                
+                # Processar valores e tipos
+                df['Valor_Clean'] = df[val_col].astype(str).str.replace(',', '.').str.replace('"', '')
+                df['Tipo'] = df['Valor_Clean'].apply(lambda x: 'C' if float(x) >= 0 else 'D')
+                df['Valor'] = df['Valor_Clean'].apply(lambda x: abs(float(x)))
+                
+            else:
+                raise Exception("Formato de CSV do Banco do Brasil não reconhecido")
         
-        df['Valor'] = pd.to_numeric(df['Valor'], errors='coerce')
+        # Limpeza final
+        if 'Valor_Clean' not in df.columns:
+            df['Valor'] = pd.to_numeric(df['Valor'], errors='coerce')
         df = df.dropna(subset=['Valor'])
+        df = df[df['Valor'] > 0]  # Remover valores zerados
+        
+        # Garantir que existe coluna Tipo
+        if 'Tipo' not in df.columns:
+            df['Tipo'] = df['Valor'].apply(lambda x: 'C' if x >= 0 else 'D')
+            df['Valor'] = df['Valor'].abs()
         
         print(f"Banco do Brasil processado: {len(df)} linhas")
         return df
